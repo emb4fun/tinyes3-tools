@@ -1,0 +1,13 @@
+#
+# Ignore files by file types
+#
+**/*.bak
+*.ncb
+*.opt
+*.plg
+
+#
+# Some more specific rules
+#
+Debug/
+Release/

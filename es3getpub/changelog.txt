@@ -1,0 +1,11 @@
+
+es3getpub ChangeLog
+
+= Version 1.10, 24.08.2021
+   * First version for GitHub.
+
+= Version 1.01, 21.04.2021
+   * Change RCVTIMEO from 100ms to 200ms.
+   
+= Version 1.00, 17.04.2021
+   * Initial public release.
