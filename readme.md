@@ -1,5 +1,5 @@
 # README for TinyES3-Tools
-The following tools are available for the daily use with the TinyES3:
+The following tools are available for the daily use with the TinyES3 (TinyELCA2S3):
 
    * es3discover
    * es3getpub
