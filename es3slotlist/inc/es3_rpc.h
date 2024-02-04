@@ -66,7 +66,12 @@
  * ES3 server port and slot count
  */
 #define ES3_SERVER_PORT          54322
-#define ES3_SLOT_COUNT           16
+
+/*
+ * If the value ES3_SLOT_COUNT will be changed, then a new version of
+ * es3slotlist must also be created with the changed value.
+ */
+#define ES3_SLOT_COUNT           256
 
 
 /*

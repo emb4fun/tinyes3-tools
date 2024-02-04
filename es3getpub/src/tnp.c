@@ -48,6 +48,7 @@
 /*=======================================================================*/
 
 #define SERVER_NAME     "TinyES3"
+#define SERVER_NAME_2   "TinyELCA2S3"
 
 #define MAX_IFACE_CNT   8
 #define MAX_SERVER_CNT  8
@@ -360,18 +361,21 @@ int tnp_ES3Search (void)
                if( (Setup.bMode == TNP_SETUP_RESPONSE)    ||
                    (Setup.bMode == TNP_SETUP_RESPONSE_ES) )
                {  
-                  /* Check if this is a "TinyES3" server */
-                  if ((0 == strcmp(Setup.Name, SERVER_NAME)) && (nServerCount < MAX_SERVER_CNT))
+                  /* Check if this is a "TinyES3" or "TinyELCA2S3" server */
+                  if (nServerCount < MAX_SERVER_CNT)
                   {
-                     /* Copy server data */
-                     memcpy(ServerList[nServerCount].bMACAddress, Setup.bMACAddress, 6);
-                     ServerList[nServerCount].dAddress   = Setup.dAddress;
-                     ServerList[nServerCount].dFWVersion = Setup.dFWVersion;
-                     memcpy(ServerList[nServerCount].Name, Setup.Name, TNP_MAX_NAME_LEN);
-                     memcpy(ServerList[nServerCount].Location, Setup.Location, TNP_MAX_LOCATION_LEN);
+                     if ((0 == strcmp(Setup.Name, SERVER_NAME)) || (0 == strcmp(Setup.Name, SERVER_NAME_2)))
+                     {
+                        /* Copy server data */
+                        memcpy(ServerList[nServerCount].bMACAddress, Setup.bMACAddress, 6);
+                        ServerList[nServerCount].dAddress   = Setup.dAddress;
+                        ServerList[nServerCount].dFWVersion = Setup.dFWVersion;
+                        memcpy(ServerList[nServerCount].Name, Setup.Name, TNP_MAX_NAME_LEN);
+                        memcpy(ServerList[nServerCount].Location, Setup.Location, TNP_MAX_LOCATION_LEN);
                      
-                     nServerCount++;
-                  }                            
+                        nServerCount++;
+                     }
+                  }                           
                }            
             }   
          }

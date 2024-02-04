@@ -56,7 +56,7 @@
 /*  All Structures and Common Constants                                  */
 /*=======================================================================*/
 
-#define VERSION         "1.10"
+#define VERSION         "1.20"
 
 #define GOTO_END(_a)    { rc = _a; goto end; }
 
@@ -83,6 +83,8 @@ static char PrivFilename[_MAX_PATH];
 static char PubFilename[_MAX_PATH];
 
 static BYTE InImage[MAX_IMAGE_SIZE];
+static DWORD dAlignment = 0;
+
 
 /*=======================================================================*/
 /*  Definition of prototypes                                             */
@@ -121,7 +123,7 @@ static void OutputStartMessage (void)
 /*************************************************************************/
 static void OutputUsage (void)
 {
-  printf("Usage: es3sign -s slot -f file [-ip a.b.c.d] [-v] [-d]\n");
+  printf("Usage: es3sign -s slot -f file [-ip a.b.c.d] [-v] [-d] [-a:Alignment]\n");
   printf("\n");
   printf("  -s   Slot name e.g. -s firefly\n");
   printf("  -f   File to sign, e.g. -f firefly.bin\n");
@@ -129,6 +131,7 @@ static void OutputUsage (void)
   printf("       e.g. -ip 192.168.1.200\n");
   printf("  -v   Show version information only\n");
   printf("  -d   Discover, search server only\n");
+  printf("  -a   Size alignment, e.g. -a 128\n");
   
 } /* OutputUsage */
 
@@ -253,6 +256,9 @@ static void CreateOutputImage (DWORD dInFileSize, es3_msg_t *pRxMsg, char *pInFi
    FILE        *hOutFile;
    DWORD        dWriteCnt;
    ES3_SIGN_HEAD Header;
+   DWORD        dIndex;   
+   DWORD        dAlignmentBytes = 0;
+   BYTE         bAB = 0xFF; /* Alignment Byte */
 
    /*
     * Replace extension by ".es3"
@@ -322,6 +328,18 @@ static void CreateOutputImage (DWORD dInFileSize, es3_msg_t *pRxMsg, char *pInFi
       }
       else
       {
+         /* Check if an aligment is needed */   
+         if (dAlignment != 0)
+         {
+            /* Calculate aligment bytes */
+            dAlignmentBytes = dAlignment - ((sizeof(ES3_SIGN_HEAD) + dInFileSize) % dAlignment);
+            
+            /* Write alignment bytes */
+            for(dIndex=0; dIndex<dAlignmentBytes; dIndex++)
+            {
+               dWriteCnt += fwrite(&bAB, sizeof(BYTE), 1, hOutFile);
+            }
+         }
          fclose(hOutFile);
          printf("\n\"%s\" successfully written.\n", OutName);
       }
@@ -620,6 +638,15 @@ int main (int argc, char **argv)
          {
             CmdDiscover = 1;
          }
+         /* Alignment */
+         else if (0 == strcmp(argv[Index], "-a"))
+         {
+            if ((Index + 1) < argc)
+            {
+               Index++;
+               dAlignment = atoi(argv[Index]);
+            }               
+         }
          else
          {
             /* Ups, unknown command */
@@ -748,6 +775,8 @@ int main (int argc, char **argv)
    }   
    printf("Slot  : %s\n", SlotName);
    printf("File  : %s\n", FileName);
+   printf("Alignment: %d\n", dAlignment);
+   
 
    /************************************************************/
    /*  At this point all parameters are available for signing  */

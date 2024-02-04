@@ -54,7 +54,7 @@
 /*  All Structures and Common Constants                                  */
 /*=======================================================================*/
 
-#define VERSION         "1.10"
+#define VERSION         "1.20"
 
 #define GOTO_END(_a)    { rc = _a; goto end; }
 
