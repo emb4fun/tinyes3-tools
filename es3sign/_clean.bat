@@ -1,8 +1,6 @@
 del *.bak /S
-del *.ncb
-del *.opt
-del *.plg
 
+rmdir ".vs" /S /Q 
 rmdir "Debug" /S /Q 
 rmdir "Release" /S /Q
 

@@ -1,5 +1,5 @@
 /**************************************************************************
-*  Copyright (c) 2021 by Michael Fischer (www.emb4fun.de).
+*  Copyright (c) 2021-2024 by Michael Fischer (www.emb4fun.de).
 *  All rights reserved.
 *
 *  Redistribution and use in source and binary forms, with or without 
@@ -8,9 +8,11 @@
 *  
 *  1. Redistributions of source code must retain the above copyright 
 *     notice, this list of conditions and the following disclaimer.
+*
 *  2. Redistributions in binary form must reproduce the above copyright
 *     notice, this list of conditions and the following disclaimer in the 
 *     documentation and/or other materials provided with the distribution.
+*
 *  3. Neither the name of the author nor the names of its contributors may 
 *     be used to endorse or promote products derived from this software 
 *     without specific prior written permission.
@@ -39,6 +41,8 @@
 /*=======================================================================*/
 /*  Includes                                                             */
 /*=======================================================================*/
+#include <winsock2.h>
+#include <WS2tcpip.h>
 #include <windows.h>
 #include <stdio.h>
 #include "stdint.h"
@@ -54,7 +58,7 @@
 /*  All Structures and Common Constants                                  */
 /*=======================================================================*/
 
-#define VERSION         "1.10"
+#define VERSION         "1.20"
 
 #define GOTO_END(_a)    { rc = _a; goto end; }
 
@@ -274,20 +278,22 @@ static int Fingerprint (uint8_t *pKey)
     * At this point we have a valid ECC key.
     */
     
-   /* Find user and computer name */
-   if ((pEnd != NULL) && (pEnd < (pKey + strlen(pKey))))    
+   /* Find user and computer name. pEnd is based on Temp */
+   pStart = pEnd; /* Set the new start */
+   pEnd   = Temp + strlen(pKey);
+   if ((pStart != NULL) && (pStart < pEnd))
    {
       /* Jump to the name@cumputer */
-      pEnd++;
+       pStart++;
       
       /* Jump over spaces */
-      while (0x20 == *pEnd)
+      while (0x20 == *pStart)
       {
-         pEnd++;
+          pStart++;
       }
       
       /* This must be the user and computer name */   
-      _snprintf(KeyNameComputer, sizeof(KeyNameComputer), "%s", pEnd);
+      _snprintf(KeyNameComputer, sizeof(KeyNameComputer), "%s", pStart);
    }
    else
    {

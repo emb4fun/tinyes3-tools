@@ -1,5 +1,0 @@
-
-es3slotlist ChangeLog
-
-= Version 1.10, 24.08.2021
-   * First version for GitHub.

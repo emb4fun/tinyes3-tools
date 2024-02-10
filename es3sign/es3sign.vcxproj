@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <SccProjectName />
+    <SccLocalPath />
+    <ProjectGuid>{02F208FC-8B79-436E-8332-15A2F37D240D}</ProjectGuid>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v142</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v142</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.Cpp.UpgradeFromVC60.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.Cpp.UpgradeFromVC60.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>.\Release\</OutDir>
+    <IntDir>.\Release\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>.\Debug\</OutDir>
+    <IntDir>.\Debug\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <StringPooling>true</StringPooling>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <Optimization>MaxSpeed</Optimization>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <WarningLevel>Level3</WarningLevel>
+      <AdditionalIncludeDirectories>..\inc;..\library\adler32;..\library\mbedtls\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_WINSOCK_DEPRECATED_NO_WARNINGS;NDEBUG;WIN32;_WINDOWS;_CONSOLE;_WIN32_WINNT=0x0500;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
+      <PrecompiledHeaderOutputFile>.\Release\es3sign.pch</PrecompiledHeaderOutputFile>
+      <ObjectFileName>.\Release\</ObjectFileName>
+      <ProgramDataBaseFileName>.\Release\</ProgramDataBaseFileName>
+    </ClCompile>
+    <Midl>
+      <TypeLibraryName>.\Release\es3sign.tlb</TypeLibraryName>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0407</Culture>
+      <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+    <Bscmake>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OutputFile>.\Release\es3sign.bsc</OutputFile>
+    </Bscmake>
+    <Link>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <SubSystem>Console</SubSystem>
+      <OutputFile>.\Release\es3sign.exe</OutputFile>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <FunctionLevelLinking>false</FunctionLevelLinking>
+      <Optimization>Disabled</Optimization>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <AdditionalIncludeDirectories>..\inc;..\library\adler32;..\library\mbedtls\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_WINSOCK_DEPRECATED_NO_WARNINGS;_DEBUG;WIN32;_WINDOWS;_CONSOLE;_WIN32_WINNT=0x0500;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AssemblerListingLocation>.\Debug\</AssemblerListingLocation>
+      <PrecompiledHeaderOutputFile>.\Debug\es3sign.pch</PrecompiledHeaderOutputFile>
+      <ObjectFileName>.\Debug\</ObjectFileName>
+      <ProgramDataBaseFileName>.\Debug\</ProgramDataBaseFileName>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+    </ClCompile>
+    <Midl>
+      <TypeLibraryName>.\Debug\es3sign.tlb</TypeLibraryName>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0407</Culture>
+      <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+    <Bscmake>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OutputFile>.\Debug\es3sign.bsc</OutputFile>
+    </Bscmake>
+    <Link>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Console</SubSystem>
+      <OutputFile>.\Debug\es3sign.exe</OutputFile>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\library\adler32\adler32.c" />
+    <ClCompile Include="..\library\mbedtls\library\md5.c" />
+    <ClCompile Include="..\src\tnp.c" />
+    <ClCompile Include="..\library\mbedtls\library\aes.c" />
+    <ClCompile Include="..\library\mbedtls\library\aesni.c" />
+    <ClCompile Include="..\library\mbedtls\library\asn1parse.c" />
+    <ClCompile Include="..\library\mbedtls\library\asn1write.c" />
+    <ClCompile Include="..\library\mbedtls\library\base64.c" />
+    <ClCompile Include="..\library\mbedtls\library\bignum.c" />
+    <ClCompile Include="..\library\mbedtls\library\ccm.c" />
+    <ClCompile Include="..\library\mbedtls\library\certs.c" />
+    <ClCompile Include="..\library\mbedtls\library\cipher.c" />
+    <ClCompile Include="..\library\mbedtls\library\cipher_wrap.c" />
+    <ClCompile Include="..\library\mbedtls\library\cmac.c" />
+    <ClCompile Include="..\library\mbedtls\library\constant_time.c" />
+    <ClCompile Include="..\library\mbedtls\library\ctr_drbg.c" />
+    <ClCompile Include="..\library\mbedtls\library\ecdh.c" />
+    <ClCompile Include="..\library\mbedtls\library\ecdsa.c" />
+    <ClCompile Include="..\library\mbedtls\library\ecp.c" />
+    <ClCompile Include="..\library\mbedtls\library\ecp_curves.c" />
+    <ClCompile Include="..\library\mbedtls\library\entropy.c" />
+    <ClCompile Include="..\library\mbedtls\library\entropy_poll.c" />
+    <ClCompile Include="..\library\mbedtls\library\gcm.c" />
+    <ClCompile Include="..\library\mbedtls\library\hmac_drbg.c" />
+    <ClCompile Include="..\library\mbedtls\library\md.c" />
+    <ClCompile Include="..\library\mbedtls\library\nist_kw.c" />
+    <ClCompile Include="..\library\mbedtls\library\oid.c" />
+    <ClCompile Include="..\library\mbedtls\library\pem.c" />
+    <ClCompile Include="..\library\mbedtls\library\pk.c" />
+    <ClCompile Include="..\library\mbedtls\library\pkcs11.c" />
+    <ClCompile Include="..\library\mbedtls\library\pkcs12.c" />
+    <ClCompile Include="..\library\mbedtls\library\pkparse.c" />
+    <ClCompile Include="..\library\mbedtls\library\pkwrite.c" />
+    <ClCompile Include="..\library\mbedtls\library\pk_wrap.c" />
+    <ClCompile Include="..\library\mbedtls\library\platform.c" />
+    <ClCompile Include="..\library\mbedtls\library\platform_util.c" />
+    <ClCompile Include="..\library\mbedtls\library\sha256.c" />
+    <ClCompile Include="..\library\mbedtls\library\threading.c" />
+    <ClCompile Include="..\library\mbedtls\library\timing.c" />
+    <ClCompile Include="..\library\mbedtls\library\x509.c" />
+    <ClCompile Include="..\library\mbedtls\library\x509write_crt.c" />
+    <ClCompile Include="..\library\mbedtls\library\x509write_csr.c" />
+    <ClCompile Include="..\library\mbedtls\library\x509_create.c" />
+    <ClCompile Include="..\library\mbedtls\library\x509_crl.c" />
+    <ClCompile Include="..\library\mbedtls\library\x509_crt.c" />
+    <ClCompile Include="..\library\mbedtls\library\x509_csr.c" />
+    <ClCompile Include="src\main.c" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

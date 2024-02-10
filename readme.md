@@ -3,6 +3,7 @@ The following tools are available for the daily use with the TinyES3:
 
    * es3discover
    * es3getpub
+   * es3getpubsign
    * es3keygen
    * es3sign
    * es3slotlist

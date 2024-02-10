@@ -1,5 +1,5 @@
 /**************************************************************************
-*  Copyright (c) 2021 by Michael Fischer (www.emb4fun.de).
+*  Copyright (c) 2021-2024 by Michael Fischer (www.emb4fun.de).
 *  All rights reserved.
 *
 *  Redistribution and use in source and binary forms, with or without 
@@ -8,9 +8,11 @@
 *  
 *  1. Redistributions of source code must retain the above copyright 
 *     notice, this list of conditions and the following disclaimer.
+*
 *  2. Redistributions in binary form must reproduce the above copyright
 *     notice, this list of conditions and the following disclaimer in the 
 *     documentation and/or other materials provided with the distribution.
+*
 *  3. Neither the name of the author nor the names of its contributors may 
 *     be used to endorse or promote products derived from this software 
 *     without specific prior written permission.
@@ -39,6 +41,8 @@
 /*=======================================================================*/
 /*  Includes                                                             */
 /*=======================================================================*/
+#include <winsock2.h>
+#include <WS2tcpip.h>
 #include <windows.h>
 #include <stdio.h>
 #include "stdint.h"
@@ -56,7 +60,7 @@
 /*  All Structures and Common Constants                                  */
 /*=======================================================================*/
 
-#define VERSION         "1.10"
+#define VERSION         "1.20"
 
 #define GOTO_END(_a)    { rc = _a; goto end; }
 
@@ -70,19 +74,21 @@
 /*  Definition of all local Data                                         */
 /*=======================================================================*/
 
-static char SlotName[SLOT_NAME_SIZE+1];
-static char FileName[FILE_NAME_SIZE+1];
-static char OutName[FILE_NAME_SIZE+1];
-static char IPName[IP_NAME_SIZE+1];
+static char   SlotName[SLOT_NAME_SIZE+1];
+static char   FileName[FILE_NAME_SIZE+1];
+static char   OutName[FILE_NAME_SIZE+1];
+static char   IPName[IP_NAME_SIZE+1];
 
-static char UserName[_MAX_PATH];
-static char ComputerName[_MAX_PATH];
-static char HomePath[_MAX_PATH];
-static char ES3Folder[_MAX_PATH];
-static char PrivFilename[_MAX_PATH];
-static char PubFilename[_MAX_PATH];
+static char   UserName[_MAX_PATH];
+static char   ComputerName[_MAX_PATH];
+static char   HomePath[_MAX_PATH];
+static char   ES3Folder[_MAX_PATH];
+static char   PrivFilename[_MAX_PATH];
+static char   PubFilename[_MAX_PATH];
 
-static BYTE InImage[MAX_IMAGE_SIZE];
+static BYTE   InImage[MAX_IMAGE_SIZE];
+static DWORD dAlignment = 0;
+
 
 /*=======================================================================*/
 /*  Definition of prototypes                                             */
@@ -121,7 +127,7 @@ static void OutputStartMessage (void)
 /*************************************************************************/
 static void OutputUsage (void)
 {
-  printf("Usage: es3sign -s slot -f file [-ip a.b.c.d] [-v] [-d]\n");
+  printf("Usage: es3sign -s slot -f file [-ip a.b.c.d] [-v] [-d] [-a Alignment]\n");
   printf("\n");
   printf("  -s   Slot name e.g. -s firefly\n");
   printf("  -f   File to sign, e.g. -f firefly.bin\n");
@@ -129,6 +135,7 @@ static void OutputUsage (void)
   printf("       e.g. -ip 192.168.1.200\n");
   printf("  -v   Show version information only\n");
   printf("  -d   Discover, search server only\n");
+  printf("  -a   Size alignment, e.g. -a 128\n");
   
 } /* OutputUsage */
 
@@ -253,6 +260,9 @@ static void CreateOutputImage (DWORD dInFileSize, es3_msg_t *pRxMsg, char *pInFi
    FILE        *hOutFile;
    DWORD        dWriteCnt;
    ES3_SIGN_HEAD Header;
+   DWORD        dIndex;   
+   DWORD        dAlignmentBytes = 0;
+   BYTE         bAB = 0xFF; /* Alignment Byte */
 
    /*
     * Replace extension by ".es3"
@@ -322,6 +332,18 @@ static void CreateOutputImage (DWORD dInFileSize, es3_msg_t *pRxMsg, char *pInFi
       }
       else
       {
+         /* Check if an aligment is needed */   
+         if (dAlignment != 0)
+         {
+            /* Calculate aligment bytes */
+            dAlignmentBytes = dAlignment - ((sizeof(ES3_SIGN_HEAD) + dInFileSize) % dAlignment);
+            
+            /* Write alignment bytes */
+            for(dIndex=0; dIndex<dAlignmentBytes; dIndex++)
+            {
+               dWriteCnt += fwrite(&bAB, sizeof(BYTE), 1, hOutFile);
+            }
+         }
          fclose(hOutFile);
          printf("\n\"%s\" successfully written.\n", OutName);
       }
@@ -620,6 +642,15 @@ int main (int argc, char **argv)
          {
             CmdDiscover = 1;
          }
+         /* Alignment */
+         else if (0 == strcmp(argv[Index], "-a"))
+         {
+            if ((Index + 1) < argc)
+            {
+               Index++;
+               dAlignment = atoi(argv[Index]);
+            }               
+         }
          else
          {
             /* Ups, unknown command */
@@ -746,8 +777,10 @@ int main (int argc, char **argv)
       _snprintf(String, sizeof(String), "%s - v%d.%02d", Server.Name, Server.dFWVersion/100, Server.dFWVersion%100);
       printf("%s  %s\r\n", String, Server.Location);
    }   
-   printf("Slot  : %s\n", SlotName);
-   printf("File  : %s\n", FileName);
+   printf("Slot     : %s\n", SlotName);
+   printf("File     : %s\n", FileName);
+   printf("Alignment: %d\n", dAlignment);
+   
 
    /************************************************************/
    /*  At this point all parameters are available for signing  */

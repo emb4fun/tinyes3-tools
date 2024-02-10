@@ -3,45 +3,6 @@
 # Copyright The Mbed TLS Contributors
 # SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 #
-# This file is provided under the Apache License 2.0, or the
-# GNU General Public License v2.0 or later.
-#
-# **********
-# Apache License 2.0:
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-# not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# **********
-#
-# **********
-# GNU General Public License v2.0 or later:
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along
-# with this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-#
-# **********
-#
 # Purpose
 #
 # Sets the version numbers in the source code to those given.
@@ -152,7 +113,7 @@ cat include/mbedtls/version.h |                                    \
     sed -e "s/_VERSION_PATCH .\{1,\}/_VERSION_PATCH  $PATCH/" |    \
     sed -e "s/_VERSION_NUMBER .\{1,\}/_VERSION_NUMBER         $VERSION_NR/" |    \
     sed -e "s/_VERSION_STRING .\{1,\}/_VERSION_STRING         \"$VERSION\"/" |    \
-    sed -e "s/_VERSION_STRING_FULL .\{1,\}/_VERSION_STRING_FULL    \"mbed TLS $VERSION\"/" \
+    sed -e "s/_VERSION_STRING_FULL .\{1,\}/_VERSION_STRING_FULL    \"Mbed TLS $VERSION\"/" \
     > tmp
 mv tmp include/mbedtls/version.h
 
@@ -163,14 +124,14 @@ mv tmp tests/suites/test_suite_version.data
 [ $VERBOSE ] && echo "Bumping PROJECT_NAME in doxygen/mbedtls.doxyfile and doxygen/input/doc_mainpage.h"
 for i in doxygen/mbedtls.doxyfile doxygen/input/doc_mainpage.h;
 do
-  sed -e "s/mbed TLS v[0-9\.]\{1,\}/mbed TLS v$VERSION/g" < $i > tmp
+  sed -e "s/\\([Mm]bed TLS v\\)[0-9][0-9.]*/\\1$VERSION/g" < $i > tmp
   mv tmp $i
 done
 
 [ $VERBOSE ] && echo "Re-generating library/error.c"
 scripts/generate_errors.pl
 
-[ $VERBOSE ] && echo "Re-generating programs/ssl/query_config.c"
+[ $VERBOSE ] && echo "Re-generating programs/test/query_config.c"
 scripts/generate_query_config.pl
 
 [ $VERBOSE ] && echo "Re-generating library/version_features.c"

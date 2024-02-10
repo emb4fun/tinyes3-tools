@@ -8,6 +8,10 @@ cd es3getpub
 call _clean.bat
 cd..
 
+cd es3getpubsign
+call _clean.bat
+cd..
+
 cd es3keygen
 call _clean.bat
 cd..

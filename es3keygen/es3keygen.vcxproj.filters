@@ -1,0 +1,160 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{169fc364-8d17-4809-a6f4-92bd2694dc66}</UniqueIdentifier>
+      <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat</Extensions>
+    </Filter>
+    <Filter Include="Source Files\library">
+      <UniqueIdentifier>{b077a7ba-19ea-43ae-a5cd-8bad5897b219}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\library\mbedtls">
+      <UniqueIdentifier>{f1cd51d0-838c-4078-b3d1-cccd271e57c2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{7d02f681-40f5-41cb-be28-35652a3d7c63}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{8f1b1f63-b89e-4468-8dae-bc43c9fad174}</UniqueIdentifier>
+      <Extensions>ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\library\mbedtls\library\x509write_csr.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\aes.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\aesni.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\asn1parse.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\asn1write.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\base64.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\bignum.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\ccm.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\certs.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\cipher.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\cipher_wrap.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\cmac.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\constant_time.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\ctr_drbg.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\ecdh.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\ecdsa.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\ecp.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\ecp_curves.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\entropy.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\entropy_poll.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\gcm.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\hmac_drbg.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\md.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\md5.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\nist_kw.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\oid.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\pem.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\pk.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\pk_wrap.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\pkcs11.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\pkcs12.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\pkparse.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\pkwrite.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\platform.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\platform_util.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\sha256.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\threading.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\timing.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\x509.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\x509_create.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\x509_crl.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\x509_crt.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\x509_csr.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="..\library\mbedtls\library\x509write_crt.c">
+      <Filter>Source Files\library\mbedtls</Filter>
+    </ClCompile>
+    <ClCompile Include="src\main.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

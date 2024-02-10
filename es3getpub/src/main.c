@@ -1,5 +1,5 @@
 /**************************************************************************
-*  Copyright (c) 2021 by Michael Fischer (www.emb4fun.de).
+*  Copyright (c) 2021-2024 by Michael Fischer (www.emb4fun.de).
 *  All rights reserved.
 *
 *  Redistribution and use in source and binary forms, with or without 
@@ -8,9 +8,11 @@
 *  
 *  1. Redistributions of source code must retain the above copyright 
 *     notice, this list of conditions and the following disclaimer.
+*
 *  2. Redistributions in binary form must reproduce the above copyright
 *     notice, this list of conditions and the following disclaimer in the 
 *     documentation and/or other materials provided with the distribution.
+*
 *  3. Neither the name of the author nor the names of its contributors may 
 *     be used to endorse or promote products derived from this software 
 *     without specific prior written permission.
@@ -39,6 +41,8 @@
 /*=======================================================================*/
 /*  Includes                                                             */
 /*=======================================================================*/
+#include <winsock2.h>
+#include <WS2tcpip.h>
 #include <windows.h>
 #include <stdio.h>
 #include "stdint.h"
@@ -54,7 +58,7 @@
 /*  All Structures and Common Constants                                  */
 /*=======================================================================*/
 
-#define VERSION         "1.10"
+#define VERSION         "1.20"
 
 #define GOTO_END(_a)    { rc = _a; goto end; }
 
@@ -470,7 +474,7 @@ int main (int argc, char **argv)
    ES3_SERVER       Server;
    char             String[64];
    
-   
+
    /*
     * Output start message
     */
