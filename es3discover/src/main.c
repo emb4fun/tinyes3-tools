@@ -1,5 +1,5 @@
 /**************************************************************************
-*  Copyright (c) 2021-2024 by Michael Fischer (www.emb4fun.de).
+*  Copyright (c) 2021-2026 by Michael Fischer (www.emb4fun.de).
 *  All rights reserved.
 *
 *  Redistribution and use in source and binary forms, with or without 
@@ -35,24 +35,23 @@
 *
 *  16.04.2021  mifi  First Version.
 *  17.04.2021  mifi  Release version v1.00.
+*  21.11.2026  mifi  Ported to MSYS2-UCRT64 (MinGW) and Linux.
 **************************************************************************/
 #define __MAIN_C__
 
 /*=======================================================================*/
 /*  Includes                                                             */
 /*=======================================================================*/
-#include <winsock2.h>
-#include <WS2tcpip.h>
-#include <windows.h>
 #include <stdio.h>
-#include "stdint.h"
+#include <stdint.h>
+#include "net_compat.h"
 #include "tnp.h"
 
 /*=======================================================================*/
 /*  All Structures and Common Constants                                  */
 /*=======================================================================*/
 
-#define VERSION         "1.20"
+#define VERSION         "2.00"
 
 #define GOTO_END(_a)    { rc = _a; goto end; }
 
@@ -79,11 +78,11 @@
 /*************************************************************************/
 static void OutputStartMessage (void)
 {
-   printf("\n");   
-   printf("es3discover v%s compiled "__DATE__" "__TIME__"\n", VERSION);
-   printf("(c) 2021 by Michael Fischer (www.emb4fun.de)\n");
    printf("\n");
-   
+   printf("es3discover v%s compiled "__DATE__" "__TIME__"\n", VERSION);
+   printf("(c) 2021-2026 by Michael Fischer (www.emb4fun.de)\n");
+   printf("\n");
+
 } /* OutputStartMessage */
 
 /*=======================================================================*/
@@ -104,8 +103,8 @@ int main (int argc, char **argv)
    int             nServerCount;
    ES3_SERVER       Server;
    char             String[64];
-   struct in_addr iaAddr;   
-   
+   struct in_addr   iaAddr;
+
    (void)argc;
    (void)argv;
 
@@ -119,12 +118,12 @@ int main (int argc, char **argv)
     */
    rc = tnp_Start();
    if (rc != 0) GOTO_END(rc);
-   
+
    /*
     * Search ES3 server
     */
-   printf("Searching Embedded Secure Signing Server...\n\n"); 
-   rc = tnp_ES3Search(); 
+   printf("Searching Embedded Secure Signing Server...\n\n");
+   rc = tnp_ES3Search();
    if (rc != 0)
    {
       printf("No server found.\n");
@@ -133,23 +132,25 @@ int main (int argc, char **argv)
    {
       nServerCount = tnp_ES3GetServerCount();
 
-	   printf("MAC-Address        IP-Address       Server - Version  Location\n");
-	   printf("======================================================================\n");
-      
+      printf("MAC-Address        IP-Address       Server - Version  Location\n");
+      printf("======================================================================\n");
+
       for (nIndex = 0; nIndex < nServerCount; nIndex++)
       {
          rc = tnp_ES3GetServer(nIndex, &Server);
          if (0 == rc)
          {
-            _snprintf(String, sizeof(String), "%02X:%02X:%02X:%02X:%02X:%02X",
+            snprintf(String, sizeof(String), "%02X:%02X:%02X:%02X:%02X:%02X",
                Server.bMACAddress[0], Server.bMACAddress[1], Server.bMACAddress[2],
                Server.bMACAddress[3], Server.bMACAddress[4], Server.bMACAddress[5]);
             printf("%s  ", String);
-         
-            iaAddr.s_addr = Server.dAddress;
-            printf("%-15s  ", inet_ntoa(iaAddr));
 
-            _snprintf(String, sizeof(String), "%s - v%d.%02d", Server.Name, Server.dFWVersion/100, Server.dFWVersion%100);
+            iaAddr.s_addr = Server.dAddress;
+            inet_ntop(AF_INET, &iaAddr, String, sizeof(String));
+            printf("%-15s  ", String);
+
+            snprintf(String, sizeof(String), "%s - v%d.%02d",
+               Server.Name, (int)(Server.dFWVersion / 100), (int)(Server.dFWVersion % 100));
             printf("%s   %s\r\n", String, Server.Location);
          }
       }
@@ -157,8 +158,8 @@ int main (int argc, char **argv)
 
 
 end:
-   
-   tnp_Stop();   
+
+   tnp_Stop();
 
    return(rc);
 } /* main */

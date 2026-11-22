@@ -34,17 +34,18 @@
 *  History:
 *
 *  16.04.2021  mifi  First Version.
+ *  21.11.2026  mifi  Ported to MSYS2-UCRT64 (MinGW) and Linux.
 **************************************************************************/
 #define __TNP_C__
 
 /*=======================================================================*/
 /*  Includes                                                             */
 /*=======================================================================*/
-#include <winsock2.h>
-#include <WS2tcpip.h>
-#include <windows.h>
 #include <stdio.h>
-#include "stdint.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include "net_compat.h"
 #include "tnp.h"
 
 /*=======================================================================*/
@@ -64,11 +65,20 @@
 
 typedef struct _iface_
 {
-   SOCKET  Socket;
-   DWORD  dAddress;
+   net_socket_t Socket;      /* Windows: socket per interface */
+   uint32_t     dAddress;    /* Interface address (host byte order) */
+   uint32_t     dMask;       /* Interface netmask (host byte order), Linux only */
 } IFACE;
 
-static int        nWSAInitDone = 0;
+static int        nNetInitDone = 0;
+
+#if !defined(_WIN32)
+/* Linux: Single socket bound to INADDR_ANY, used to send and receive.
+ * Binding to the specific interface address does not work in every
+ * environment (e.g. WSL2 mirrored networking does not deliver packets
+ * to sockets bound to a specific IP address). */
+static net_socket_t AnySocket = NET_INVALID_SOCKET;
+#endif
 
 static int        nIfaceCount;
 static IFACE       IfaceList[MAX_IFACE_CNT];
@@ -85,6 +95,55 @@ static ES3_SERVER  ServerList[MAX_SERVER_CNT];
 /*=======================================================================*/
 
 /*************************************************************************/
+/*  AddInterface                                                         */
+/*                                                                       */
+/*  In    : dAddress                                                     */
+/*  Out   : none                                                         */
+/*  Return: none                                                         */
+/*************************************************************************/
+static void AddInterface (uint32_t dAddress, uint32_t dMask)
+{
+   if (nIfaceCount >= MAX_IFACE_CNT)
+   {
+      /* No more space in the interface list */
+      return;
+   }
+
+#if defined(_WIN32)
+   {
+      net_socket_t Socket;
+      int          nOptionValue;
+
+      /* Create interface socket */
+      Socket = socket(AF_INET, SOCK_DGRAM, 0);
+      if (Socket == NET_INVALID_SOCKET)
+      {
+         /* Fatal error */
+         exit(0);
+      }
+
+      /* Add socket option BROADCAST */
+      nOptionValue = 1;
+      (void)setsockopt(Socket, SOL_SOCKET, SO_BROADCAST,
+                       (const char *)&nOptionValue, sizeof(nOptionValue));
+
+      /* Set socket option RCVTIMEO to 200ms */
+      (void)net_set_recv_timeout(Socket, 200);
+
+      /* Save socket info */
+      IfaceList[nIfaceCount].Socket = Socket;
+   }
+#endif
+
+   /* Save address info */
+   IfaceList[nIfaceCount].dAddress = dAddress;
+   IfaceList[nIfaceCount].dMask    = dMask;
+
+   nIfaceCount++;
+
+} /* AddInterface */
+
+/*************************************************************************/
 /*  GetInterfaceList                                                     */
 /*                                                                       */
 /*  In    : none                                                         */
@@ -93,29 +152,35 @@ static ES3_SERVER  ServerList[MAX_SERVER_CNT];
 /*************************************************************************/
 static void GetInterfaceList (void)
 {
-   int                  rc;
-   SOCKET               Socket;
-   INTERFACE_INFO       InterfaceList[MAX_IFACE_CNT];
+   uint32_t           dValue;
    struct sockaddr_in *pAddress;
-   int                 nInterfacesCnt;
-   DWORD               dBytesReturn;
-   DWORD               dValue;
-   int                 nIndex;
-   int                 nOptionValue;
+#if defined(_WIN32)
+   SOCKET             Socket;
+   INTERFACE_INFO     InterfaceList[MAX_IFACE_CNT];
+   DWORD              dBytesReturn;
+   int                nInterfacesCnt;
+   int                nIndex;
+#else
+   struct ifaddrs    *pIfAddrs = NULL;
+   struct ifaddrs    *pIf;
+   struct sockaddr_in *pNetmask;
+   uint32_t          dMask;
+#endif
 
    /* Default, clear data */
    nIfaceCount = 0;
    memset(&IfaceList, 0x00, sizeof(IfaceList));
+
+#if defined(_WIN32)
 
    /* Get interface list */
    Socket = socket(AF_INET, SOCK_DGRAM, 0);
    if (Socket != INVALID_SOCKET)
    {
       /* Try to get the Interface List info */
-      rc = WSAIoctl(Socket, SIO_GET_INTERFACE_LIST, NULL, 0,
-                    InterfaceList, sizeof(InterfaceList),
-                    &dBytesReturn, NULL, NULL);
-      if (0 == rc)
+      if (WSAIoctl(Socket, SIO_GET_INTERFACE_LIST, NULL, 0,
+                   InterfaceList, sizeof(InterfaceList),
+                   &dBytesReturn, NULL, NULL) == 0)
       {
          /* The socket is not needed anymore */
          closesocket(Socket);
@@ -123,40 +188,54 @@ static void GetInterfaceList (void)
          /* Get interface count */
          nInterfacesCnt = dBytesReturn / sizeof(INTERFACE_INFO);
 
-         nIfaceCount = 0;
          for (nIndex = 0; nIndex < nInterfacesCnt; nIndex++)
          {
-            /* Address*/
+            /* Address */
             pAddress = (struct sockaddr_in *)&(InterfaceList[nIndex].iiAddress);
-            dValue = ntohl(pAddress->sin_addr.s_addr);
+            dValue   = ntohl(pAddress->sin_addr.s_addr);
 
             /* Check for 127.0.0.1, this is not needed here */
-            if ((dValue != 0x7F000001) && (nIfaceCount < MAX_IFACE_CNT))
+            if (dValue != 0x7F000001)
             {
-               /* Create interface socket */
-               IfaceList[nIfaceCount].Socket = socket(AF_INET, SOCK_DGRAM, 0);
-               if (INVALID_SOCKET == IfaceList[nIfaceCount].Socket)
-               {
-                  /* Fatal error */
-                  exit(0);
-               }
-
-               /* Add socket option BROADCAST */
-               nOptionValue = TRUE;
-               setsockopt(IfaceList[nIfaceCount].Socket, SOL_SOCKET, SO_BROADCAST, (char *)&nOptionValue, sizeof(BOOL));
-
-               /* Set socket option RCVTIMEO to 200ms*/
-               nOptionValue = 200;
-               setsockopt(IfaceList[nIfaceCount].Socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&nOptionValue, sizeof(BOOL));
-
-               /* Save address info */
-               IfaceList[nIfaceCount].dAddress = dValue;
-
-               nIfaceCount++;
+               AddInterface(dValue, 0);
             }
          }
       }
+      else
+      {
+         /* The socket is not needed anymore */
+         closesocket(Socket);
+      }
    }
+
+#else
+
+   /* Get interface list */
+   if (getifaddrs(&pIfAddrs) == 0)
+   {
+      for (pIf = pIfAddrs; pIf != NULL; pIf = pIf->ifa_next)
+      {
+         if ((pIf->ifa_addr != NULL) && (pIf->ifa_addr->sa_family == AF_INET))
+         {
+            /* Address */
+            pAddress = (struct sockaddr_in *)pIf->ifa_addr;
+            dValue   = ntohl(pAddress->sin_addr.s_addr);
+
+            /* Check for 127.0.0.1, this is not needed here */
+            if (dValue != 0x7F000001)
+            {
+               /* Netmask, used for the directed broadcast address */
+               pNetmask = (struct sockaddr_in *)pIf->ifa_netmask;
+               dMask    = (pNetmask != NULL) ? ntohl(pNetmask->sin_addr.s_addr) : 0;
+
+               AddInterface(dValue, dMask);
+            }
+         }
+      }
+      freeifaddrs(pIfAddrs);
+   }
+
+#endif
 
 } /* GetInterfaceList */
 
@@ -174,33 +253,35 @@ static void GetInterfaceList (void)
 int tnp_Start (void)
 {
    int            rc = 0;
-   WSADATA        WSAData;
-   WORD          wVersion = WINSOCK_VERSION;
-   int           nIndex;
-   SOCKADDR_IN  saSource;
+#if defined(_WIN32)
+   int            nIndex;
+#endif
+   struct sockaddr_in saSource;
 
-   /* 
-    * Initialize Winsocket 
+   /*
+    * Initialize the socket subsystem
     */
-   if (WSAStartup(wVersion, &WSAData) != 0)
+   if (net_socket_startup() != 0)
    {
-      printf("WSAStartup failed. Error: %d\r\n", WSAGetLastError());
+      printf("Socket startup failed.\r\n");
       exit(-1);
    }
-   nWSAInitDone = 1;
+   nNetInitDone = 1;
 
-   /* 
-    * Get interface list 
+   /*
+    * Get interface list
     */
    GetInterfaceList();
-   if(0 == nIfaceCount) 
+   if(0 == nIfaceCount)
    {
       printf("Error, could not find any ethernet interfaces.\r\n");
       GOTO_END(-1);
    }
-   
-   /* 
-    * Bind to interface 
+
+#if defined(_WIN32)
+
+   /*
+    * Windows: Bind one socket to each interface
     */
    for (nIndex = 0; nIndex < nIfaceCount; nIndex++)
    {
@@ -210,7 +291,7 @@ int tnp_Start (void)
       saSource.sin_family      = AF_INET;
 
       /* bind socket */
-      rc = bind(IfaceList[nIndex].Socket, (const struct sockaddr*)&saSource, sizeof(SOCKADDR_IN));
+      rc = bind(IfaceList[nIndex].Socket, (const struct sockaddr*)&saSource, sizeof(struct sockaddr_in));
       if (rc != 0)
       {
          printf("Error, could not bind interfaces.\r\n");
@@ -219,12 +300,53 @@ int tnp_Start (void)
       }
    }
 
-   rc = 0;   
+#else
+
+   /*
+    * Linux: Use one single socket bound to INADDR_ANY. Binding to
+    * a specific interface address does not work in every environment
+    * (e.g. WSL2 in mirrored networking mode does not deliver packets
+    * to sockets which are bound to a specific IP address).
+    */
+   {
+      int nOptionValue;
+
+      AnySocket = socket(AF_INET, SOCK_DGRAM, 0);
+      if (AnySocket == NET_INVALID_SOCKET)
+      {
+         printf("Error, could not create socket.\r\n");
+         GOTO_END(-2);
+      }
+
+      /* Add socket option BROADCAST */
+      nOptionValue = 1;
+      (void)setsockopt(AnySocket, SOL_SOCKET, SO_BROADCAST,
+                       (const char *)&nOptionValue, sizeof(nOptionValue));
+
+      /* Set socket option RCVTIMEO to 200ms */
+      (void)net_set_recv_timeout(AnySocket, 200);
+
+      /* Bind the socket to INADDR_ANY */
+      saSource.sin_addr.s_addr = htonl(INADDR_ANY);
+      saSource.sin_port        = htons(TNP_UDP_PORT);
+      saSource.sin_family      = AF_INET;
+
+      rc = bind(AnySocket, (const struct sockaddr*)&saSource, sizeof(struct sockaddr_in));
+      if (rc != 0)
+      {
+         printf("Error, could not bind socket.\r\n");
+         GOTO_END(-2);
+      }
+   }
+
+#endif
+
+   rc = 0;
 
 end:
 
    return(rc);
-} /* main */
+} /* tnp_Start */
 
 /*************************************************************************/
 /*  tnp_Stop                                                             */
@@ -235,11 +357,18 @@ end:
 /*************************************************************************/
 void tnp_Stop (void)
 {
-   if (1 == nWSAInitDone)
+   if (1 == nNetInitDone)
    {
-      WSACleanup();
+#if !defined(_WIN32)
+      if (AnySocket != NET_INVALID_SOCKET)
+      {
+         net_close_socket(AnySocket);
+         AnySocket = NET_INVALID_SOCKET;
+      }
+#endif
+      net_socket_cleanup();
    }
-   
+
 } /* tnp_Stop */
 
 /*************************************************************************/
@@ -253,10 +382,11 @@ int tnp_ES3Search (void)
 {
    int            rc = 0;
    int           nIndex;
-   int          nAddressLen;
-   SOCKADDR_IN  saDest;
-   SOCKADDR_IN  saSource;
-   TNP_SETUP      Setup; 
+   int           nDupIndex;
+   net_socklen_t nAddressLen;
+   struct sockaddr_in saDest;
+   struct sockaddr_in saSource;
+   TNP_SETUP      Setup;
    
    /* Default, clear data */
    nServerCount = 0;
@@ -274,7 +404,9 @@ int tnp_ES3Search (void)
    Setup.wVersion = TNP_HEADER_VERSION;
    Setup.bMode    = TNP_SETUP_REQUEST;
 
-   /* Send to all interfaces */
+#if defined(_WIN32)
+
+   /* Send the limited broadcast on all interfaces */
    for (nIndex = 0; nIndex < nIfaceCount; nIndex++)
    {
       /* Set address and port */
@@ -284,27 +416,65 @@ int tnp_ES3Search (void)
    
       /* Send the packet */
       sendto(IfaceList[nIndex].Socket, (const char *)&Setup, sizeof(TNP_SETUP), 0, 
-             (const struct sockaddr*)&saDest, sizeof(SOCKADDR_IN));
+             (const struct sockaddr*)&saDest, sizeof(struct sockaddr_in));
    }
+
+#else
+
+   /*
+    * Linux: Send the limited broadcast and in addition a directed
+    * broadcast (address | ~netmask) on every interface, because the
+    * limited broadcast is only routed via the default interface when
+    * the socket is bound to INADDR_ANY.
+    */
+   saDest.sin_addr.s_addr = INADDR_BROADCAST;
+   saDest.sin_port        = htons(TNP_UDP_PORT);
+   saDest.sin_family      = AF_INET;
+   (void)sendto(AnySocket, (const char *)&Setup, sizeof(TNP_SETUP), 0,
+                (const struct sockaddr*)&saDest, sizeof(struct sockaddr_in));
+
+   for (nIndex = 0; nIndex < nIfaceCount; nIndex++)
+   {
+      saDest.sin_addr.s_addr = htonl(IfaceList[nIndex].dAddress |
+                                     ~IfaceList[nIndex].dMask);
+      (void)sendto(AnySocket, (const char *)&Setup, sizeof(TNP_SETUP), 0,
+                   (const struct sockaddr*)&saDest, sizeof(struct sockaddr_in));
+   }
+
+#endif
 
    /*
     * Wait for response
     */
 
-   /* Check all interfaces */
+   /*
+    * Windows: Check all interface sockets
+    * Linux:   Check the single socket
+    */
+#if defined(_WIN32)
    for (nIndex = 0; nIndex < nIfaceCount; nIndex++)
+#endif
    {
       while (1)
       {
-         nAddressLen = sizeof(SOCKADDR_IN);
+         nAddressLen = sizeof(struct sockaddr_in);
+#if defined(_WIN32)
          rc = recvfrom(IfaceList[nIndex].Socket, 
                        (char *)&Setup, 
                        sizeof(TNP_SETUP), 
                        0,
                        (struct sockaddr*)&saSource,
                        &nAddressLen);
+#else
+         rc = recvfrom(AnySocket,
+                       (char *)&Setup,
+                       sizeof(TNP_SETUP),
+                       0,
+                       (struct sockaddr*)&saSource,
+                       &nAddressLen);
+#endif
 
-         if( (rc             != SOCKET_ERROR)       &&
+         if( (rc             != NET_SOCKET_ERROR)   &&
              (Setup.dMagic1  == TNP_HEADER_MAGIC_1) &&
              (Setup.dMagic2  == TNP_HEADER_MAGIC_2) &&
              (Setup.wSize    == sizeof(TNP_SETUP))  &&
@@ -327,16 +497,29 @@ int tnp_ES3Search (void)
                    (Setup.bMode == TNP_SETUP_RESPONSE_ES) )
                {  
                   /* Check if this is a "TinyES3" server */
-                  if ((0 == strcmp(Setup.Name, SERVER_NAME)) && (nServerCount < MAX_SERVER_CNT))
+                  if (0 == strcmp(Setup.Name, SERVER_NAME))
                   {
-                     /* Copy server data */
-                     memcpy(ServerList[nServerCount].bMACAddress, Setup.bMACAddress, 6);
-                     ServerList[nServerCount].dAddress   = Setup.dAddress;
-                     ServerList[nServerCount].dFWVersion = Setup.dFWVersion;
-                     memcpy(ServerList[nServerCount].Name, Setup.Name, TNP_MAX_NAME_LEN);
-                     memcpy(ServerList[nServerCount].Location, Setup.Location, TNP_MAX_LOCATION_LEN);
-                     
-                     nServerCount++;
+                     /* Check if this server is already in the list (e.g. if
+                      * the request was sent as limited and directed broadcast) */
+                     for (nDupIndex = 0; nDupIndex < nServerCount; nDupIndex++)
+                     {
+                        if (0 == memcmp(ServerList[nDupIndex].bMACAddress, Setup.bMACAddress, 6))
+                        {
+                           break;
+                        }
+                     }
+
+                     /* Not a duplicate, copy server data */
+                     if ((nDupIndex == nServerCount) && (nServerCount < MAX_SERVER_CNT))
+                     {
+                        memcpy(ServerList[nServerCount].bMACAddress, Setup.bMACAddress, 6);
+                        ServerList[nServerCount].dAddress   = Setup.dAddress;
+                        ServerList[nServerCount].dFWVersion = Setup.dFWVersion;
+                        memcpy(ServerList[nServerCount].Name, Setup.Name, TNP_MAX_NAME_LEN);
+                        memcpy(ServerList[nServerCount].Location, Setup.Location, TNP_MAX_LOCATION_LEN);
+
+                        nServerCount++;
+                     }
                   }                            
                }            
             } 

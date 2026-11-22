@@ -5,11 +5,16 @@
  *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
-#if !defined(MBEDTLS_CONFIG_FILE)
-#include "mbedtls/config.h"
-#else
-#include MBEDTLS_CONFIG_FILE
+/* Tell MSVC that we're ok with using classic C functions even
+ * when an `_s` variant exist. For most functions, the improvements
+ * of the `_s` variants are of limited usefulness and not worth
+ * the portability headaches.
+ */
+#if defined(_MSC_VER) && !defined(_CRT_SECURE_NO_DEPRECATE)
+#define _CRT_SECURE_NO_DEPRECATE 1
 #endif
+
+#include "mbedtls/build_info.h"
 
 #include "mbedtls/platform.h"
 
@@ -49,8 +54,8 @@ struct options {
     const char *output_file;    /* where to store the output              */
 } opt;
 
-int convert_pem_to_der(const unsigned char *input, size_t ilen,
-                       unsigned char *output, size_t *olen)
+static int convert_pem_to_der(const unsigned char *input, size_t ilen,
+                              unsigned char *output, size_t *olen)
 {
     int ret;
     const unsigned char *s1, *s2, *end = input + ilen;
@@ -263,11 +268,6 @@ usage:
 
 exit:
     free(pem_buffer);
-
-#if defined(_WIN32)
-    mbedtls_printf("  + Press Enter to exit this program.\n");
-    fflush(stdout); getchar();
-#endif
 
     mbedtls_exit(exit_code);
 }

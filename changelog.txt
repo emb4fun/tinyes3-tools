@@ -2,12 +2,16 @@
 * Project: tinyes3-tools
 * Name   : "TinyES3-Tools"
 * Target : Windows
-* Version: 20240210
+* Version: 20261122
 ***************************************************************************
-* Tools  : Visual Studio 2019
+* Tools  : MSYS2-UCRT64 / Linux, see README.md
 ***************************************************************************
 * URL    : https://github.com/emb4fun/tinyes3-tools
 ***************************************************************************
+
+= Version 2.00, 22.11.2026
+   * Projects changed to CMake/MSYS2-UCRT64 build.
+   * Updated MbedTLS to v4.1.2.
 
 = Version 1.20, 10.02.2024
    * Projects changed from Visual C++ 6.0 to Visual Studio 2019.

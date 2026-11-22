@@ -1,5 +1,5 @@
 /**************************************************************************
-*  Copyright (c) 2021-2024 by Michael Fischer (www.emb4fun.de).
+*  Copyright (c) 2021-2026 by Michael Fischer (www.emb4fun.de).
 *  All rights reserved.
 *
 *  Redistribution and use in source and binary forms, with or without 
@@ -34,6 +34,7 @@
 *  History:
 *
 *  16.04.2021  mifi  First Version.
+*  21.11.2026  mifi  Ported to MSYS2-UCRT64 (MinGW) and Linux.
 **************************************************************************/
 #if !defined(__TNP_H__)
 #define __TNP_H__
@@ -41,8 +42,7 @@
 /**************************************************************************
 *  Includes
 **************************************************************************/
-#include <windows.h>
-#include "stdint.h"
+#include <stdint.h>
 
 /**************************************************************************
 *  Global Definitions
@@ -69,7 +69,7 @@ enum
   TNP_SETUP_RESPONSE_ES
 };
 
-#pragma pack(1)
+#pragma pack(push, 1)
 typedef struct _tnp_setup_
 {
   uint32_t dMagic1;
@@ -89,7 +89,7 @@ typedef struct _tnp_setup_
   char      Location[TNP_MAX_LOCATION_LEN];
   char      MDNSName[TNP_MAX_MDNS_NAME_LEN];
 } TNP_SETUP;
-#pragma pack()
+#pragma pack(pop)
 
 
 typedef struct _es3_Server_

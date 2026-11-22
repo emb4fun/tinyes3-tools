@@ -1,5 +1,5 @@
 /**************************************************************************
-*  Copyright (c) 2021-2024 by Michael Fischer (www.emb4fun.de).
+*  Copyright (c) 2021-2026 by Michael Fischer (www.emb4fun.de).
 *  All rights reserved.
 *
 *  Redistribution and use in source and binary forms, with or without 
@@ -35,46 +35,57 @@
 *
 *  10.04.2021  mifi  First Version.
 *  11.04.2021  mifi  Release version v1.00.
+*  21.11.2026  mifi  Ported to MSYS2-UCRT64/Linux and mbedTLS 4.1.2.
 **************************************************************************/
 #define __MAIN_C__
 
 /*=======================================================================*/
 /*  Includes                                                             */
 /*=======================================================================*/
-#include <winsock2.h>
-#include <WS2tcpip.h>
-#include <windows.h>
 #include <stdio.h>
-#include "stdint.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
-#include "mbedtls/platform.h"
-#include "mbedtls/base64.h"
-#include "mbedtls/md5.h"
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
+
+#include "psa/crypto.h"
 #include "mbedtls/pk.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/base64.h"
 
 /*=======================================================================*/
 /*  All Structures and Common Constants                                  */
 /*=======================================================================*/
 
-#define VERSION         "1.20"
+#define VERSION         "2.00"
 
 #define GOTO_END(_a)    { rc = _a; goto end; }
 
 /* The key should not overwrite */
 #define NOT_OVERWRITE   1
 
+#if defined(_WIN32)
+#define ES3_PATH_MAX   1024
+#else
+#define ES3_PATH_MAX   4096
+#endif
+
 /*=======================================================================*/
 /*  Definition of all local Data                                         */
 /*=======================================================================*/
 
-static char    UserName[_MAX_PATH];
-static char    ComputerName[_MAX_PATH];
-static char    HomePath[_MAX_PATH];
-static char    ES3Folder[_MAX_PATH];
-static char    PrivFilename[_MAX_PATH];
-static char    PubFilename[_MAX_PATH];
+static char    UserName[ES3_PATH_MAX];
+static char    ComputerName[ES3_PATH_MAX];
+static char    HomePath[ES3_PATH_MAX];
+static char    ES3Folder[ES3_PATH_MAX];
+static char    PrivFilename[ES3_PATH_MAX];
+static char    PubFilename[ES3_PATH_MAX];
 
 static uint8_t KeyPriv[512];
 static uint8_t TempPub[512];
@@ -90,9 +101,87 @@ static uint8_t KeyNameComputer[64];
 
 static int Fingerprint (uint8_t *pKey);
 
-/*=======================================================================*/
-/*  Definition of all local Procedures                                   */
-/*=======================================================================*/
+static int FileExists (const char *pPath);
+static int FolderExists (const char *pPath);
+static int CreateFolder (const char *pPath);
+
+/*************************************************************************/
+/*  FileExists                                                           */
+/*                                                                       */
+/*  In    : pPath                                                        */
+/*  Out   : none                                                         */
+/*  Return: 1 = file exists / 0 = file does not exist                    */
+/*************************************************************************/
+static int FileExists (const char *pPath)
+{
+   int ok = 0;
+
+#if defined(_WIN32)
+   if (GetFileAttributesA(pPath) != INVALID_FILE_ATTRIBUTES)
+   {
+      ok = 1;
+   }
+#else
+   struct stat st;
+
+   if (stat(pPath, &st) == 0)
+   {
+      ok = 1;
+   }
+#endif
+
+   return(ok);
+} /* FileExists */
+
+/*************************************************************************/
+/*  FolderExists                                                         */
+/*                                                                       */
+/*  In    : pPath                                                        */
+/*  Out   : none                                                         */
+/*  Return: 1 = folder exists / 0 = folder does not exist                */
+/*************************************************************************/
+static int FolderExists (const char *pPath)
+{
+   int ok = 0;
+
+#if defined(_WIN32)
+   DWORD dAttr = GetFileAttributesA(pPath);
+
+   if ((dAttr != INVALID_FILE_ATTRIBUTES) && (dAttr & FILE_ATTRIBUTE_DIRECTORY))
+   {
+      ok = 1;
+   }
+#else
+   struct stat st;
+
+   if ((stat(pPath, &st) == 0) && S_ISDIR(st.st_mode))
+   {
+      ok = 1;
+   }
+#endif
+
+   return(ok);
+} /* FolderExists */
+
+/*************************************************************************/
+/*  CreateFolder                                                         */
+/*                                                                       */
+/*  In    : pPath                                                        */
+/*  Out   : none                                                         */
+/*  Return: 1 = OK / 0 = error                                           */
+/*************************************************************************/
+static int CreateFolder (const char *pPath)
+{
+   int ok;
+
+#if defined(_WIN32)
+   ok = (CreateDirectoryA(pPath, NULL) != 0) ? 1 : 0;
+#else
+   ok = (mkdir(pPath, 0755) == 0) ? 1 : 0;
+#endif
+
+   return(ok);
+} /* CreateFolder */
 
 /*************************************************************************/
 /*  OutputStartMessage                                                   */
@@ -105,11 +194,11 @@ static int Fingerprint (uint8_t *pKey);
 /*************************************************************************/
 static void OutputStartMessage (void)
 {
-   printf("\n");   
-   printf("es3keygen v%s compiled "__DATE__" "__TIME__"\n", VERSION);
-   printf("(c) 2021 by Michael Fischer (www.emb4fun.de)\n");
    printf("\n");
-   
+   printf("es3keygen v%s compiled "__DATE__" "__TIME__"\n", VERSION);
+   printf("(c) 2021-2026 by Michael Fischer (www.emb4fun.de)\n");
+   printf("\n");
+
 } /* OutputStartMessage */
 
 /*************************************************************************/
@@ -127,7 +216,7 @@ static void OutputUsage (void)
   printf("\n");
   printf("  -v   Show version information only\n");
   printf("  -f   Show public key fingerprint only\n");
-  
+
 } /* OutputUsage */
 
 /*************************************************************************/
@@ -137,51 +226,51 @@ static void OutputUsage (void)
 /*                                                                       */
 /*  In    : none                                                         */
 /*  Out   : none                                                         */
-/*  Return: none                                                         */
+/*  Return: 0 = OK / error cause                                         */
 /*************************************************************************/
 static int OutputFingerprintOnly (void)
 {
    int     rc = -1;
    int     Index;
    FILE  *hFile;
-   DWORD  dReadCnt;
+   size_t  dReadCnt;
    char    Buffer[1024];
 
    hFile = fopen(PubFilename, "rb");
    if (NULL == hFile)
    {
-      printf("Public key \"%s\" not found\n", PubFilename);       
+      printf("Public key \"%s\" not found\n", PubFilename);
    }
    else
    {
-      dReadCnt = fread(Buffer, sizeof(BYTE), sizeof(Buffer), hFile);
+      dReadCnt = fread(Buffer, sizeof(char), sizeof(Buffer), hFile);
       fclose(hFile);
-      
+
       if ((dReadCnt != 0) && (dReadCnt < (sizeof(Buffer) - 1)))
       {
          /* Add termination to the string */
          Buffer[dReadCnt] = 0;
-         
-         rc = Fingerprint(Buffer);
+
+         rc = Fingerprint((uint8_t *)Buffer);
          if (0 == rc)
          {
-            /* Output fingerprint */   
-            printf("The public key fingerprint is:\n"); 
-            printf("%s ", KeyType);
-   
-            for (Index = 0; Index < sizeof(KeyMD5Sum); Index++)
+            /* Output fingerprint */
+            printf("The public key fingerprint is:\n");
+            printf("%s ", (char *)KeyType);
+
+            for (Index = 0; Index < (int)sizeof(KeyMD5Sum); Index++)
             {
                printf("%02X", KeyMD5Sum[Index]);
             }
-            printf(" %s\n\n", KeyNameComputer);
+            printf(" %s\n\n", (char *)KeyNameComputer);
          }
          else
          {
             /* Error */
             printf("Public key error %d\n", rc);
          }
-      }         
-   }      
+      }
+   }
 
    return(rc);
 } /* OutputFingerprintOnly */
@@ -200,42 +289,47 @@ static int Fingerprint (uint8_t *pKey)
    int                rc = -1;
    mbedtls_pk_context ctx;
    size_t             len;
-   uint8_t            Temp[512];  
+   size_t             hash_len = 0;
+   uint8_t            Temp[512];
    uint8_t          *pPtr;
    uint8_t          *pStart;
    uint8_t          *pEnd;
    uint8_t          *buf = NULL;
-   uint8_t          *p;
 
-   /* Copy key */   
-   _snprintf(Temp, sizeof(Temp), "%s", pKey);
+   /* Copy key */
+   snprintf((char *)Temp, sizeof(Temp), "%s", (char *)pKey);
 
    /* Clear data first */
-   memset(KeyType, 0x00, sizeof(KeyType));   
+   memset(KeyType, 0x00, sizeof(KeyType));
    memset(KeyMD5Sum, 0x00, sizeof(KeyMD5Sum));
    memset(KeyNameComputer, 0x00, sizeof(KeyNameComputer));
-   
+
    /* Check type */
-   pStart = strstr(Temp, "es3-nistp256");
+   pStart = (uint8_t *)strstr((char *)Temp, "es3-nistp256");
    if (pStart != NULL)
    {
-      _snprintf(KeyType, sizeof(KeyType), "NIST P-256");
+      snprintf((char *)KeyType, sizeof(KeyType), "NIST P-256");
       pStart += 12;
-   }   
-   
+   }
+   else
+   {
+      /* Unknown key type */
+      return(-1);
+   }
+
    /* Jump over spaces */
    while (0x20 == *pStart)
    {
       pStart++;
    }
-   
+
    /* Find end of data */
-   pEnd = strstr(pStart, " ");
+   pEnd = (uint8_t *)strstr((char *)pStart, " ");
    if (pEnd != NULL)
    {
       *pEnd = 0;
    }
-    
+
    /* Convert '-' to 0x0A */
    pPtr = pStart;
    while (*pPtr != 0)
@@ -250,63 +344,64 @@ static int Fingerprint (uint8_t *pKey)
    mbedtls_pk_init(&ctx);
 
    /* Dummy decode to get size of decode buffer */
-   rc = mbedtls_base64_decode(NULL, 0, &len, pStart, strlen(pStart));   
+   rc = mbedtls_base64_decode(NULL, 0, &len, pStart, strlen((char *)pStart));
    if (rc == MBEDTLS_ERR_BASE64_INVALID_CHARACTER) GOTO_END(-1);
 
-   /* Allocate decode buffer */   
-   buf = mbedtls_calloc(1, len);
+   /* Allocate decode buffer */
+   buf = calloc(1, len);
    if (NULL == buf) GOTO_END(-2);
 
    /* Decode now */
-   rc = mbedtls_base64_decode(buf, len, &len, pStart, strlen(pStart));
+   rc = mbedtls_base64_decode(buf, len, &len, pStart, strlen((char *)pStart));
    if (rc != 0) GOTO_END(-3);
-   
-   /* 
+
+   /*
     * At this point buf with len contains the raw key data.
     */
-    
-   /* Create MD5 hash of decoded data */    
-   rc = mbedtls_md5_ret(buf, len, KeyMD5Sum);
-   if (rc != 0) GOTO_END(-4);
+
+   /* Create MD5 hash of decoded data */
+   rc = psa_hash_compute(PSA_ALG_MD5, buf, len,
+                         KeyMD5Sum, sizeof(KeyMD5Sum), &hash_len);
+   if (rc != PSA_SUCCESS) GOTO_END(-4);
 
    /* Check if this is a valid key */
-   p = buf;
-   rc = mbedtls_pk_parse_subpubkey(&p,  p + len, &ctx);
+   rc = mbedtls_pk_parse_public_key(&ctx, buf, len);
    if (rc != 0) GOTO_END(-5);
-   
-   /* 
+
+   /*
     * At this point we have a valid ECC key.
     */
-    
+
    /* Find user and computer name. pEnd is based on Temp */
    pStart = pEnd; /* Set the new start */
-   pEnd   = Temp + strlen(pKey);
+   pEnd   = Temp + strlen((char *)pKey);
    if ((pStart != NULL) && (pStart < pEnd))
    {
       /* Jump to the name@cumputer */
-       pStart++;
-      
+      pStart++;
+
       /* Jump over spaces */
       while (0x20 == *pStart)
       {
-          pStart++;
+         pStart++;
       }
-      
-      /* This must be the user and computer name */   
-      _snprintf(KeyNameComputer, sizeof(KeyNameComputer), "%s", pStart);
+
+      /* This must be the user and computer name */
+      snprintf((char *)KeyNameComputer, sizeof(KeyNameComputer), "%s", (char *)pStart);
+      rc = 0;
    }
    else
    {
       /* Error */
       rc = -6;
    }
-   
+
 end:
 
    /* Free buffer if available */
    if (buf != NULL)
    {
-      mbedtls_free(buf);
+      free(buf);
    }
 
    /* Clear data */
@@ -332,55 +427,53 @@ static int SaveKey (void)
    int     rc = -1;
    int     ok;
    int     Index;
-   DWORD  dAttr;
    FILE  *hFile;
-   DWORD  dWriteCnt;
+   size_t  dWriteCnt;
 
    /* Check if the "es3" folder must be created */
-   dAttr = GetFileAttributes(ES3Folder);  
-   if (0xFFFFFFFF == dAttr)
+   if (0 == FolderExists(ES3Folder))
    {
       /* Directory not available */
-      ok = CreateDirectory(ES3Folder, NULL);
+      ok = CreateFolder(ES3Folder);
       if (ok != 1) GOTO_END(-1);
-   } 
+   }
 
-   /* 
+   /*
     * Save private key
-    */   
+    */
    hFile = fopen(PrivFilename, "wb");
    if (NULL == hFile) GOTO_END(-1);
-   
-   dWriteCnt = fwrite(KeyPriv, sizeof(BYTE), strlen(KeyPriv), hFile);
-   fclose(hFile);
-   if (dWriteCnt != strlen(KeyPriv)) GOTO_END(-1);
 
-   /* 
+   dWriteCnt = fwrite(KeyPriv, sizeof(char), strlen((char *)KeyPriv), hFile);
+   fclose(hFile);
+   if (dWriteCnt != strlen((char *)KeyPriv)) GOTO_END(-1);
+
+   /*
     * Save public key
-    */   
+    */
    hFile = fopen(PubFilename, "wb");
    if (NULL == hFile) GOTO_END(-1);
-   
-   dWriteCnt = fwrite(KeyPub, sizeof(BYTE), strlen(KeyPub), hFile);
-   fclose(hFile);
-   if (dWriteCnt != strlen(KeyPub)) GOTO_END(-1);
 
-   /* 
-    * Output fingerprint 
-    */   
-   printf("The public key fingerprint is:\n"); 
-   printf("%s ", KeyType);
-   
-   for (Index = 0; Index < sizeof(KeyMD5Sum); Index++)
+   dWriteCnt = fwrite(KeyPub, sizeof(char), strlen((char *)KeyPub), hFile);
+   fclose(hFile);
+   if (dWriteCnt != strlen((char *)KeyPub)) GOTO_END(-1);
+
+   /*
+    * Output fingerprint
+    */
+   printf("The public key fingerprint is:\n");
+   printf("%s ", (char *)KeyType);
+
+   for (Index = 0; Index < (int)sizeof(KeyMD5Sum); Index++)
    {
       printf("%02X", KeyMD5Sum[Index]);
    }
-   printf(" %s\n\n", KeyNameComputer);
-      
-   printf("Your private key has been saved in: \"%s\"\n", PrivFilename); 
-   printf("Your public key has been saved in: \"%s\"\n", PubFilename); 
-   
-   /* No error */   
+   printf(" %s\n\n", (char *)KeyNameComputer);
+
+   printf("Your private key has been saved in: \"%s\"\n", PrivFilename);
+   printf("Your public key has been saved in: \"%s\"\n", PubFilename);
+
+   /* No error */
    rc = 0;
 
 end:
@@ -399,66 +492,72 @@ end:
 /*************************************************************************/
 static int CreateKeyPair (void)
 {
-   int                      rc;
-   mbedtls_pk_context       pk;
-   mbedtls_entropy_context  entropy;
-   mbedtls_ctr_drbg_context ctr_drbg;
-   mbedtls_ecp_group_id     grp_id = MBEDTLS_ECP_DP_SECP256R1;
-   uint8_t                *pPtr;
-   uint8_t                *pEnd;
-   DWORD                   dAttr;
-   int                      Index;
-   char                     c;
-   
-   /* Prepare key generation */
-   mbedtls_pk_init(&pk);
-   mbedtls_ctr_drbg_init(&ctr_drbg);
-   mbedtls_entropy_init(&entropy);
+   int                   rc;
+   psa_status_t         status;
+   psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+   mbedtls_svc_key_id_t key_id = MBEDTLS_SVC_KEY_ID_INIT;
+   mbedtls_pk_context   pk;
+   uint8_t            *pPtr;
+   uint8_t            *pEnd;
+   int                  Index;
+   char                 c;
 
-   /* Seed the random generator */
-   rc =  mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-                               (const unsigned char *) "TinyES3keygen", 13);
-   if (rc != 0) GOTO_END(-1); 
-   
-   /* Generate the key */
-   rc = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+   /*
+    * Generate the key (NIST P-256)
+    */
+   psa_set_key_type(&attributes,
+                    PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1));
+   psa_set_key_bits(&attributes, 256);
+   psa_set_key_usage_flags(&attributes,
+                           PSA_KEY_USAGE_SIGN_HASH |
+                           PSA_KEY_USAGE_VERIFY_HASH |
+                           PSA_KEY_USAGE_EXPORT);
+   psa_set_key_algorithm(&attributes, PSA_ALG_ECDSA_ANY);
+
+   status = psa_generate_key(&attributes, &key_id);
+   if (status != PSA_SUCCESS) GOTO_END(-1);
+
+   /* Copy the PSA key into a PK context */
+   mbedtls_pk_init(&pk);
+   rc = mbedtls_pk_copy_from_psa(key_id, &pk);
    if (rc != 0) GOTO_END(-2);
 
-   rc = mbedtls_ecp_gen_key(grp_id, mbedtls_pk_ec(pk), mbedtls_ctr_drbg_random, &ctr_drbg);
-   if (rc != 0) GOTO_END(-3);
-   
-   /* "Convert" private key */
+   /*
+    * Convert the private key into a PEM string
+    */
    rc = mbedtls_pk_write_key_pem(&pk, KeyPriv, sizeof(KeyPriv));
-   if (rc != 0) GOTO_END(-4);
-   
-   /* "Convert" public key */
-   rc = mbedtls_pk_write_pubkey_pem(&pk, KeyPub, sizeof(KeyPub));
-   if (rc != 0) GOTO_END(-5);
+   if (rc != 0) GOTO_END(-3);
 
-   /* 
+   /*
+    * Convert the public key into a PEM string
+    */
+   rc = mbedtls_pk_write_pubkey_pem(&pk, KeyPub, sizeof(KeyPub));
+   if (rc != 0) GOTO_END(-4);
+
+   /*
     * Convert public key
     *
     * "es3-nistp256 keydata user@computer"
     */
-   
+
    /*
     * 1. Remove "-----BEGIN PUBLIC KEY-----"
-    */ 
+    */
    pPtr = &KeyPub[26];
    while (0x0A == *pPtr) pPtr++;
 
    /*
     * 2. Remove "-----END PUBLIC KEY-----"
-    */    
-   pEnd = strstr(pPtr, "-----END PUBLIC KEY-----");
-   if (NULL == pEnd) GOTO_END(-6); 
+    */
+   pEnd = (uint8_t *)strstr((char *)pPtr, "-----END PUBLIC KEY-----");
+   if (NULL == pEnd) GOTO_END(-5);
    *pEnd = 0;
-   
+
    /*
     * 3. Remove 0x0A from the end
     */
    pEnd--;
-   while(0x0A == *pEnd)
+   while (0x0A == *pEnd)
    {
       *pEnd = 0;
       pEnd--;
@@ -466,7 +565,7 @@ static int CreateKeyPair (void)
 
    /*
     * 4. Copy data and replace 0x0A by '-'
-	 */
+    */
    Index = 0;
    while (*pPtr != 0)
    {
@@ -485,32 +584,31 @@ static int CreateKeyPair (void)
    /*
     * 5. Create new key
     */
-   _snprintf(KeyPub, sizeof(KeyPub), "es3-nistp256 %s %s@%s", 
-             TempPub, UserName, ComputerName);
-             
-   /* Create fingerprint for later use */             
-   rc = Fingerprint(KeyPub);             
-   if (rc != 0) GOTO_END(-7);
-             
-   /* Clear temp data */             
+   snprintf((char *)KeyPub, sizeof(KeyPub), "es3-nistp256 %s %s@%s",
+            (char *)TempPub, UserName, ComputerName);
+
+   /* Create fingerprint for later use */
+   rc = Fingerprint(KeyPub);
+   if (rc != 0) GOTO_END(-6);
+
+   /* Clear temp data */
    memset(TempPub, 0x00, sizeof(TempPub));
 
-   printf("Successful generation of a private/public es3 key pair.\n\n"); 
+   printf("Successful generation of a private/public es3 key pair.\n\n");
 
    /* Check if file already exists */
-   dAttr = GetFileAttributes(PrivFilename);  
-   if (dAttr != 0xFFFFFFFF)
+   if (1 == FileExists(PrivFilename))
    {
-      /* File already exists */  
+      /* File already exists */
       printf("\"%s\" already exists.\n", PrivFilename);
       printf("Overwrite (y/n)?");
-      
-      /* Check if the file should be overwrite */   
-      if (scanf("%c", &c) != 1) GOTO_END(-8);
+
+      /* Check if the file should be overwrite */
+      if (scanf("%c", &c) != 1) GOTO_END(-7);
       if ((c != 'y') && (c != 'Y')) GOTO_END(NOT_OVERWRITE);
 
-      /* 'y' or 'Y' was pressed */      
-	   printf("\n");
+      /* 'y' or 'Y' was pressed */
+      printf("\n");
    }
 
 end:
@@ -525,10 +623,9 @@ end:
 
    /* Free the mbedTLS content */
    mbedtls_pk_free(&pk);
-   mbedtls_ctr_drbg_free(&ctr_drbg);
-   mbedtls_entropy_free(&entropy);
+   psa_destroy_key(key_id);
 
-   return(rc);  
+   return(rc);
 } /* CreateKeyPair */
 
 /*************************************************************************/
@@ -542,11 +639,9 @@ end:
 /*************************************************************************/
 static int GetEnvironemnt (void)
 {
-   int     rc = -1;
-   DWORD  dSize;
-   BOOL   ok;
+   int   rc = -1;
 
-   /* Clear data first */   
+   /* Clear data first */
    memset(UserName, 0x00, sizeof(UserName));
    memset(ComputerName, 0x00, sizeof(ComputerName));
    memset(HomePath, 0x00, sizeof(HomePath));
@@ -554,31 +649,71 @@ static int GetEnvironemnt (void)
    memset(PrivFilename, 0x00, sizeof(PrivFilename));
    memset(PubFilename, 0x00, sizeof(PubFilename));
 
-   /* Get User name */
-   dSize = sizeof(UserName);
-   ok = GetUserName(UserName, &dSize);
-   if (1 == ok)
+#if defined(_WIN32)
    {
-      /* Get Computer name */   
-      dSize = sizeof(ComputerName);
-      ok = GetComputerName(ComputerName, &dSize);
-      if (1 == ok)
-      {
-         /* Get Home path */
-         dSize = ExpandEnvironmentStrings("%HOMEPATH%", HomePath, sizeof(HomePath));
-         if ((dSize > 0) && (dSize < sizeof(HomePath)))
-         {
-            /* Build ES3 folder */
-            _snprintf(ES3Folder, sizeof(ES3Folder), "C:%s\\.es3", HomePath);
-            
-            _snprintf(PrivFilename, sizeof(PrivFilename), "%s\\id_es3", ES3Folder);
-            _snprintf(PubFilename, sizeof(PubFilename), "%s\\id_es3.pub", ES3Folder);
+      DWORD dSize;
+      int   ok;
 
-            rc = 0;
-         }   
+      /* Get User name */
+      dSize = sizeof(UserName);
+      ok = GetUserNameA(UserName, &dSize);
+      if (ok == 1)
+      {
+         /* Get Computer name */
+         dSize = sizeof(ComputerName);
+         ok = GetComputerNameA(ComputerName, &dSize);
+         if (ok == 1)
+         {
+            /* Get Home path */
+            if (ExpandEnvironmentStringsA("%HOMEPATH%", HomePath, sizeof(HomePath)) > 0)
+            {
+               /* Build ES3 folder */
+               snprintf(ES3Folder, sizeof(ES3Folder), "C:%s\\.es3", HomePath);
+
+               snprintf(PrivFilename, sizeof(PrivFilename), "%s\\id_es3", ES3Folder);
+               snprintf(PubFilename, sizeof(PubFilename), "%s\\id_es3.pub", ES3Folder);
+
+               rc = 0;
+            }
+         }
       }
-   } 
-   
+   }
+#else
+   {
+      char *pEnv;
+
+      /* Get User name */
+      pEnv = getenv("USER");
+      if (pEnv == NULL)
+      {
+         pEnv = getenv("LOGNAME");
+      }
+      if (pEnv != NULL)
+      {
+         snprintf(UserName, sizeof(UserName), "%s", pEnv);
+
+         /* Get Computer name */
+         if (gethostname(ComputerName, sizeof(ComputerName)) == 0)
+         {
+            /* Get Home path */
+            pEnv = getenv("HOME");
+            if (pEnv != NULL)
+            {
+               snprintf(HomePath, sizeof(HomePath), "%s", pEnv);
+
+               /* Build ES3 folder */
+               snprintf(ES3Folder, sizeof(ES3Folder), "%s/.es3", HomePath);
+
+               snprintf(PrivFilename, sizeof(PrivFilename), "%s/id_es3", ES3Folder);
+               snprintf(PubFilename, sizeof(PubFilename), "%s/id_es3.pub", ES3Folder);
+
+               rc = 0;
+            }
+         }
+      }
+   }
+#endif
+
    return(rc);
 } /* GetEnvironemnt */
 
@@ -600,13 +735,13 @@ int main (int argc, char **argv)
    int CmdUnknown     = 0;
    int CmdVersion     = 0;
    int CmdFingerprint = 0;
-   
+
    /*
     * Output start message
     */
    OutputStartMessage();
-   
-   /* 
+
+   /*
     * Check arguments if available
     */
    if (argc > 1)
@@ -627,31 +762,41 @@ int main (int argc, char **argv)
          }
       }
    }
-   
+
    /* Ups, found an unknown command */
    if (1 == CmdUnknown)
    {
       OutputUsage();
       exit(0);
    }
-   
+
    /* Version information requested */
    if (1 == CmdVersion)
    {
       /* Only OutputStartMessage was needed */
       exit(0);
    }
-   
-   /* 
+
+   /*
+    * Initialize the crypto subsystem (mbedTLS 4.x / PSA)
+    */
+   rc = psa_crypto_init();
+   if (rc != PSA_SUCCESS)
+   {
+      printf("Error, could not initialize the crypto subsystem.\n");
+      GOTO_END(-1);
+   }
+
+   /*
     * Retrieve infos like user, computer name and home path
-    */    
+    */
    rc = GetEnvironemnt();
    if (rc != 0)
    {
       printf("Error, could not retrieve environment variables.\n");
       GOTO_END(-1);
    }
-   
+
    /*
     * Check for fingerprint command only
     */
@@ -659,20 +804,20 @@ int main (int argc, char **argv)
    {
       OutputFingerprintOnly();
       exit(0);
-   }    
+   }
 
    /*
     * Create key pair
     */
    rc = CreateKeyPair();
    if (NOT_OVERWRITE == rc) GOTO_END(0);   /* Key should not overwrite */
-   
+
    if (rc != 0)
    {
       printf("Error, could not create private/public key pair.\n");
       GOTO_END(-1);
    }
-   
+
    /*
     * Save key
     */
@@ -682,7 +827,7 @@ int main (int argc, char **argv)
       printf("Error, could not save private/public key pair.\n");
       GOTO_END(-1);
    }
-   
+
 end:
 
    /* Delete key data */
@@ -690,12 +835,11 @@ end:
    memset(TempPub, 0x00, sizeof(TempPub));
    memset(KeyPub , 0x00, sizeof(KeyPub));
 
-   memset(KeyType, 0x00, sizeof(KeyType));   
+   memset(KeyType, 0x00, sizeof(KeyType));
    memset(KeyMD5Sum, 0x00, sizeof(KeyMD5Sum));
    memset(KeyNameComputer, 0x00, sizeof(KeyNameComputer));
 
    return(rc);
 } /* main */
-
 
 /*** EOF ***/

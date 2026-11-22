@@ -1,5 +1,5 @@
 /**************************************************************************
-*  Copyright (c) 2021-2024 by Michael Fischer (www.emb4fun.de).
+*  Copyright (c) 2021-2026 by Michael Fischer (www.emb4fun.de).
 *  All rights reserved.
 *
 *  Redistribution and use in source and binary forms, with or without 
@@ -34,35 +34,37 @@
 *  History:
 *
 *  14.08.2021  mifi  First Version, release version v1.00.
+*  21.11.2026  mifi  Ported to MSYS2-UCRT64/Linux and mbedTLS 4.1.2.
 **************************************************************************/
 #define __MAIN_C__
 
 /*=======================================================================*/
 /*  Includes                                                             */
 /*=======================================================================*/
-#include <winsock2.h>
-#include <WS2tcpip.h>
-#include <windows.h>
 #include <stdio.h>
-#include "stdint.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+
+#include "net_compat.h"
 #include "tnp.h"
 #include "es3_rpc.h"
 
-#include "mbedtls/platform.h"
+#include "psa/crypto.h"
 #include "mbedtls/pk.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
 
 /*=======================================================================*/
 /*  All Structures and Common Constants                                  */
 /*=======================================================================*/
 
-#define VERSION         "1.20"
+#define VERSION         "2.00"
 
 #define GOTO_END(_a)    { rc = _a; goto end; }
 
+#define ES3_PATH_MAX    1024
+
 #define SLOT_NAME_SIZE  (19)
-#define FILE_NAME_SIZE  (_MAX_PATH-1)
+#define FILE_NAME_SIZE  (ES3_PATH_MAX-1)
 #define IP_NAME_SIZE    (15)
 
 /*=======================================================================*/
@@ -71,16 +73,12 @@
 
 static char IPName[IP_NAME_SIZE+1];
 
-static char UserName[_MAX_PATH];
-static char ComputerName[_MAX_PATH];
-static char HomePath[_MAX_PATH];
-static char ES3Folder[_MAX_PATH];
-static char PrivFilename[_MAX_PATH];
-static char PubFilename[_MAX_PATH];
-
-/*=======================================================================*/
-/*  Definition of prototypes                                             */
-/*=======================================================================*/
+static char UserName[ES3_PATH_MAX];
+static char ComputerName[ES3_PATH_MAX];
+static char HomePath[ES3_PATH_MAX];
+static char ES3Folder[ES3_PATH_MAX];
+static char PrivFilename[ES3_PATH_MAX];
+static char PubFilename[ES3_PATH_MAX];
 
 /*=======================================================================*/
 /*  Definition of all local Procedures                                   */
@@ -97,11 +95,11 @@ static char PubFilename[_MAX_PATH];
 /*************************************************************************/
 static void OutputStartMessage (void)
 {
-   printf("\n");   
-   printf("es3slotlist v%s compiled "__DATE__" "__TIME__"\n", VERSION);
-   printf("(c) 2021 by Michael Fischer (www.emb4fun.de)\n");
    printf("\n");
-   
+   printf("es3slotlist v%s compiled "__DATE__" "__TIME__"\n", VERSION);
+   printf("(c) 2021-2026 by Michael Fischer (www.emb4fun.de)\n");
+   printf("\n");
+
 } /* OutputStartMessage */
 
 /*************************************************************************/
@@ -121,7 +119,7 @@ static void OutputUsage (void)
   printf("       e.g. -ip 192.168.1.200\n");
   printf("  -v   Show version information only\n");
   printf("  -d   Discover, search server only\n");
-  
+
 } /* OutputUsage */
 
 /*************************************************************************/
@@ -138,13 +136,13 @@ static int Discover (void)
    int             nServerCount;
    ES3_SERVER       Server;
    char             String[64];
-   struct in_addr iaAddr;   
-   
+   struct in_addr   iaAddr;
+
    /*
     * Search ES3 server
     */
-   printf("Searching Embedded Secure Signing Server...\n\n"); 
-   rc = tnp_ES3Search(); 
+   printf("Searching Embedded Secure Signing Server...\n\n");
+   rc = tnp_ES3Search();
    if (rc != 0)
    {
       printf("No server found.\n");
@@ -153,23 +151,25 @@ static int Discover (void)
    {
       nServerCount = tnp_ES3GetServerCount();
 
-	   printf("MAC-Address        IP-Address       Server - Version  Location\n");
-	   printf("======================================================================\n");
-      
+      printf("MAC-Address        IP-Address       Server - Version  Location\n");
+      printf("======================================================================\n");
+
       for (nIndex = 0; nIndex < nServerCount; nIndex++)
       {
          rc = tnp_ES3GetServer(nIndex, &Server);
          if (0 == rc)
          {
-            _snprintf(String, sizeof(String), "%02X:%02X:%02X:%02X:%02X:%02X",
+            snprintf(String, sizeof(String), "%02X:%02X:%02X:%02X:%02X:%02X",
                Server.bMACAddress[0], Server.bMACAddress[1], Server.bMACAddress[2],
                Server.bMACAddress[3], Server.bMACAddress[4], Server.bMACAddress[5]);
             printf("%s  ", String);
-         
-            iaAddr.s_addr = Server.dAddress;
-            printf("%-15s  ", inet_ntoa(iaAddr));
 
-            _snprintf(String, sizeof(String), "%s - v%d.%02d", Server.Name, Server.dFWVersion/100, Server.dFWVersion%100);
+            iaAddr.s_addr = Server.dAddress;
+            inet_ntop(AF_INET, &iaAddr, String, sizeof(String));
+            printf("%-15s  ", String);
+
+            snprintf(String, sizeof(String), "%s - v%d.%02d",
+               Server.Name, (int)(Server.dFWVersion/100), (int)(Server.dFWVersion%100));
             printf("%s   %s\r\n", String, Server.Location);
          }
       }
@@ -189,11 +189,9 @@ static int Discover (void)
 /*************************************************************************/
 static int GetEnvironemnt (void)
 {
-   int     rc = -1;
-   DWORD  dSize;
-   BOOL   ok;
+   int   rc = -1;
 
-   /* Clear data first */   
+   /* Clear data first */
    memset(UserName, 0x00, sizeof(UserName));
    memset(ComputerName, 0x00, sizeof(ComputerName));
    memset(HomePath, 0x00, sizeof(HomePath));
@@ -201,31 +199,71 @@ static int GetEnvironemnt (void)
    memset(PrivFilename, 0x00, sizeof(PrivFilename));
    memset(PubFilename, 0x00, sizeof(PubFilename));
 
-   /* Get User name */
-   dSize = sizeof(UserName);
-   ok = GetUserName(UserName, &dSize);
-   if (1 == ok)
+#if defined(_WIN32)
    {
-      /* Get Computer name */   
-      dSize = sizeof(ComputerName);
-      ok = GetComputerName(ComputerName, &dSize);
-      if (1 == ok)
-      {
-         /* Get Home path */
-         dSize = ExpandEnvironmentStrings("%HOMEPATH%", HomePath, sizeof(HomePath));
-         if ((dSize > 0) && (dSize < sizeof(HomePath)))
-         {
-            /* Build ES3 folder */
-            _snprintf(ES3Folder, sizeof(ES3Folder), "C:%s\\.es3", HomePath);
-            
-            _snprintf(PrivFilename, sizeof(PrivFilename), "%s\\id_es3", ES3Folder);
-            _snprintf(PubFilename, sizeof(PubFilename), "%s\\id_es3.pub", ES3Folder);
+      DWORD dSize;
+      int   ok;
 
-            rc = 0;
-         }   
+      /* Get User name */
+      dSize = sizeof(UserName);
+      ok = GetUserNameA(UserName, &dSize);
+      if (ok == 1)
+      {
+         /* Get Computer name */
+         dSize = sizeof(ComputerName);
+         ok = GetComputerNameA(ComputerName, &dSize);
+         if (ok == 1)
+         {
+            /* Get Home path */
+            if (ExpandEnvironmentStringsA("%HOMEPATH%", HomePath, sizeof(HomePath)) > 0)
+            {
+               /* Build ES3 folder */
+               snprintf(ES3Folder, sizeof(ES3Folder), "C:%s\\.es3", HomePath);
+
+               snprintf(PrivFilename, sizeof(PrivFilename), "%s\\id_es3", ES3Folder);
+               snprintf(PubFilename, sizeof(PubFilename), "%s\\id_es3.pub", ES3Folder);
+
+               rc = 0;
+            }
+         }
       }
-   } 
-   
+   }
+#else
+   {
+      char *pEnv;
+
+      /* Get User name */
+      pEnv = getenv("USER");
+      if (pEnv == NULL)
+      {
+         pEnv = getenv("LOGNAME");
+      }
+      if (pEnv != NULL)
+      {
+         snprintf(UserName, sizeof(UserName), "%s", pEnv);
+
+         /* Get Computer name */
+         if (gethostname(ComputerName, sizeof(ComputerName)) == 0)
+         {
+            /* Get Home path */
+            pEnv = getenv("HOME");
+            if (pEnv != NULL)
+            {
+               snprintf(HomePath, sizeof(HomePath), "%s", pEnv);
+
+               /* Build ES3 folder */
+               snprintf(ES3Folder, sizeof(ES3Folder), "%s/.es3", HomePath);
+
+               snprintf(PrivFilename, sizeof(PrivFilename), "%s/id_es3", ES3Folder);
+               snprintf(PubFilename, sizeof(PubFilename), "%s/id_es3.pub", ES3Folder);
+
+               rc = 0;
+            }
+         }
+      }
+   }
+#endif
+
    return(rc);
 } /* GetEnvironemnt */
 
@@ -239,17 +277,17 @@ static int GetEnvironemnt (void)
 static void OutputSlotList (es3_msg_t *pRxMsg)
 {
    int nSlot;
-   
+
    printf("\r\n");
    printf("Available slots:\r\n");
    printf("\r\n");
-   
+
    for (nSlot = 0; nSlot < ES3_SLOT_COUNT; nSlot++)
    {
       if (pRxMsg->Data.rGetList.SlotArray[nSlot][0] != 0)
       {
          printf(" %s\r\n", pRxMsg->Data.rGetList.SlotArray[nSlot]);
-      }   
+      }
    }
 
 } /* OutputSlotList */
@@ -257,128 +295,120 @@ static void OutputSlotList (es3_msg_t *pRxMsg)
 /*************************************************************************/
 /*  HandleGetListReq                                                     */
 /*                                                                       */
-/*  In    : pTxMsg, pRxMsg, dAddress                                     */ 
+/*  In    : pTxMsg, pRxMsg, dAddress                                     */
 /*  Out   : pRxMsg                                                       */
 /*  Return: 0 = OK / error cause                                         */
 /*************************************************************************/
-static int HandleGetListReq (es3_msg_t *pTxMsg, es3_msg_t *pRxMsg, DWORD dAddress)
+static int HandleGetListReq (es3_msg_t *pTxMsg, es3_msg_t *pRxMsg, uint32_t dAddress)
 {
-   int            rc = -1;
-   int           nAddressLen;
-   int           nOptionValue;
-   SOCKET         Socket;
-   SOCKADDR_IN  saDest;
-   SOCKADDR_IN  saSource;
+   int                 rc = -1;
+   net_socklen_t       nAddressLen;
+   net_socket_t        Socket;
+   struct sockaddr_in  saDest;
+   struct sockaddr_in  saSource;
 
    /* Get socket */
    Socket = socket(AF_INET, SOCK_DGRAM, 0);
-   if (Socket != INVALID_SOCKET)
+   if (Socket != NET_INVALID_SOCKET)
    {
-      /* Set socket option RCVTIMEO to 1000ms*/
-      nOptionValue = 1000;
-      setsockopt(Socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&nOptionValue, sizeof(BOOL));
+      /* Set socket option RCVTIMEO to 1000ms */
+      (void)net_set_recv_timeout(Socket, 1000);
+
+      /* Bind the socket to a fixed source port, so the response of the
+       * server can be received in every environment. In WSL2 mirrored
+       * networking mode packets are not delivered to sockets which are
+       * not bound explicitly. */
+      saSource.sin_addr.s_addr = htonl(INADDR_ANY);
+      saSource.sin_port        = htons(ES3_SERVER_PORT);
+      saSource.sin_family      = AF_INET;
+      (void)bind(Socket, (const struct sockaddr*)&saSource, sizeof(struct sockaddr_in));
 
       /* Set address and port */
       saDest.sin_addr.s_addr = dAddress;
       saDest.sin_port        = htons(ES3_SERVER_PORT);
       saDest.sin_family      = AF_INET;
-   
+
       /* Send the request to the server */
-      sendto(Socket, (const char *)pTxMsg, ES3_RPC_HEADER_SIZE + pTxMsg->Header.Len, 0, 
-             (const struct sockaddr*)&saDest, sizeof(SOCKADDR_IN));
+      (void)sendto(Socket, (const char *)pTxMsg,
+                   ES3_RPC_HEADER_SIZE + pTxMsg->Header.Len, 0,
+                   (const struct sockaddr*)&saDest, sizeof(struct sockaddr_in));
 
-      /* Wait for the response from the server */          
-      nAddressLen = sizeof(SOCKADDR_IN);
-      rc = recvfrom(Socket, (char *)pRxMsg, sizeof(es3_msg_t), 
+      /* Wait for the response from the server */
+      nAddressLen = sizeof(struct sockaddr_in);
+      rc = recvfrom(Socket, (char *)pRxMsg, sizeof(es3_msg_t),
                     0, (struct sockaddr*)&saSource, &nAddressLen);
-                    
-      /* Socket can be closed */
-      closesocket(Socket);
 
-      /* Check size of the return data */                 
+      /* Socket can be closed */
+      net_close_socket(Socket);
+
+      /* Check size of the return data */
       if (rc != -1)
       {
-         rc = (rc >= ES3_RPC_HEADER_SIZE) ? 0 : -1;
-      }   
-   }      
-   
+         rc = ((size_t)rc >= ES3_RPC_HEADER_SIZE) ? 0 : -1;
+      }
+   }
+
    return(rc);
 } /* HandleGetListReq */
 
 /*************************************************************************/
 /*  SlotList                                                             */
 /*                                                                       */
-/*  In    : dAddress                                                     */ 
+/*  In    : dAddress                                                     */
 /*  Out   : none                                                         */
 /*  Return: 0 = OK / error cause                                         */
 /*************************************************************************/
-static int SlotList (DWORD dAddress)
+static int SlotList (uint32_t dAddress)
 {
-   int                      rc;
-   mbedtls_pk_context       pk;
-   mbedtls_entropy_context  entropy;
-   mbedtls_ctr_drbg_context ctr_drbg;
-   size_t                   len;
-   size_t                   SigLen;
-   uint8_t                  Hash[32];
-   es3_msg_t                TxMsg;
-   es3_msg_t                RxMsg;
-   
-   /*
-    * Prepare key generation
-    */
-   mbedtls_pk_init(&pk);
-   mbedtls_ctr_drbg_init(&ctr_drbg);
-   mbedtls_entropy_init(&entropy);
-   
-//   psa_crypto_init();
-      
+   int            rc;
+   size_t         len;
+   size_t         hash_len = 0;
+   size_t         SigLen;
+   uint8_t        Hash[32];
+   es3_msg_t      TxMsg;
+   es3_msg_t      RxMsg;
+   mbedtls_pk_context pk;
+
    /*
     * Create GetList request
     */
    memset(&TxMsg, 0x00, sizeof(es3_msg_t));
-   
+
    TxMsg.Header.Magic1  = ES3_RPC_HEADER_MAGIC_1;
    TxMsg.Header.Magic2  = ES3_RPC_HEADER_MAGIC_2;
    TxMsg.Header.SizeVer = ES3_RPC_SIZEVER;
-   TxMsg.Header.Func    = ES3_MSG_GET_LIST;   
-   _snprintf(TxMsg.Header.User, ES3_RPC_USER_SIZE-1, "%s@%s", UserName, ComputerName);
-   
-   TxMsg.Header.Len     = ES3_CALL_GET_LIST_SIZE; 
-   _snprintf(TxMsg.Data.cGetList.Slot, ES3_RPC_SLOT_SIZE-1, "root-of-trust");
+   TxMsg.Header.Func    = ES3_MSG_GET_LIST;
+   snprintf(TxMsg.Header.User, ES3_RPC_USER_SIZE-1, "%s@%s", UserName, ComputerName);
 
+   TxMsg.Header.Len     = ES3_CALL_GET_LIST_SIZE;
+   snprintf(TxMsg.Data.cGetList.Slot, ES3_RPC_SLOT_SIZE-1, "root-of-trust");
 
    /*
     * Sign the GetList request
-    */   
-    
-   /* Hash GetList */    
+    */
+
+   /* Hash GetList */
    len = ES3_CALL_GET_LIST_SIZE;
-   rc = mbedtls_sha256_ret((uint8_t*)&TxMsg.Data, len, Hash, 0);
-   if (rc != 0) GOTO_END(-4); 
+   rc = psa_hash_compute(PSA_ALG_SHA_256, (uint8_t *)&TxMsg.Data, len,
+                         Hash, sizeof(Hash), &hash_len);
+   if (rc != PSA_SUCCESS) GOTO_END(-4);
 
-   /* Seed the random generator */
-   rc =  mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-                               (const unsigned char *) "TinyES3sign", 11);
-   if (rc != 0) GOTO_END(-5); 
-
-   /* Read private key */   
+   /* Read private key */
+   mbedtls_pk_init(&pk);
    rc = mbedtls_pk_parse_keyfile(&pk, PrivFilename, NULL);
+   if (rc != 0) GOTO_END(-5);
+
+   /* Create signature */
+   rc = mbedtls_pk_sign(&pk, MBEDTLS_MD_SHA256, Hash, sizeof(Hash),
+                        TxMsg.Header.Sig, ES3_RPC_SIG_SIZE, &SigLen);
    if (rc != 0) GOTO_END(-6);
-   
-   /* Create signature */   
-   SigLen = ES3_RPC_SIG_SIZE;
-   rc = mbedtls_pk_sign(&pk, MBEDTLS_MD_SHA256, Hash, 0, 
-                        TxMsg.Header.Sig, &SigLen,
-                        mbedtls_ctr_drbg_random, &ctr_drbg);
-   if (rc != 0) GOTO_END(-7);
-   
+
    /* Check signature size */
-   if (SigLen > ES3_RPC_SIG_SIZE) GOTO_END(-8);
-   
+   if (SigLen > ES3_RPC_SIG_SIZE) GOTO_END(-7);
+
    TxMsg.Header.SigLen = (uint8_t)SigLen;
 
-   rc = HandleGetListReq(&TxMsg, &RxMsg, dAddress); 
+   rc = HandleGetListReq(&TxMsg, &RxMsg, dAddress);
    if (0 == rc)
    {
       rc = RxMsg.Header.Result;
@@ -388,7 +418,7 @@ static int SlotList (DWORD dAddress)
          case ES3_RPC_ERROR:      printf("\nAn internal error has occurred: %d\n", rc);                   break;
          case ES3_RPC_ERR_LOCKED: printf("\nError, the encrypted keystore is currently still locked.\n"); break;
          case ES3_RPC_ERR_USER:   printf("\nError, user \"%s\" not available.\n", TxMsg.Header.User);     break;
-         
+
          case ES3_RPC_ERR_ECC:
          case ES3_RPC_ERR_LEN:
          case ES3_RPC_ERR_FUNC:
@@ -398,27 +428,25 @@ static int SlotList (DWORD dAddress)
             break;
          }
       }
-      
-      /* In case of no error, create output file */
+
+      /* In case of no error, output the slot list */
       if (0 == rc)
       {
          OutputSlotList(&RxMsg);
       }
-      
+
    }
    else
    {
-      printf("\nError, no response from server.\n");   
+      printf("\nError, no response from server.\n");
    }
 
 end:
 
    mbedtls_pk_free(&pk);
-   mbedtls_ctr_drbg_free(&ctr_drbg);
-   mbedtls_entropy_free(&entropy);
 
-   return(rc);   
-} /* GetPub */
+   return(rc);
+} /* SlotList */
 
 /*=======================================================================*/
 /*  All code exported                                                    */
@@ -439,18 +467,17 @@ int main (int argc, char **argv)
    int              CmdVersion  = 0;
    int              CmdDiscover = 0;
    int              CmdIP       = 0;
-   DWORD           dAddress     = 0;
-   struct in_addr iaAddr;   
+   uint32_t         dAddress    = 0;
+   struct in_addr   iaAddr;
    ES3_SERVER       Server;
    char             String[64];
-   
-   
+
    /*
     * Output start message
     */
    OutputStartMessage();
-   
-   /* 
+
+   /*
     * Check arguments if available
     */
    if (argc > 1)
@@ -462,10 +489,10 @@ int main (int argc, char **argv)
          {
             if ((Index + 1) < argc)
             {
-               CmdIP = 1;   
+               CmdIP = 1;
                Index++;
-               _snprintf(IPName, IP_NAME_SIZE, "%s", argv[Index]);
-            }               
+               snprintf(IPName, IP_NAME_SIZE, "%s", argv[Index]);
+            }
          }
          /* Check version information only */
          else if (0 == strcmp(argv[Index], "-v"))
@@ -491,20 +518,30 @@ int main (int argc, char **argv)
       OutputUsage();
       exit(0);
    }
-   
+
    /* Version information requested */
    if (1 == CmdVersion)
    {
       /* Only OutputStartMessage was needed */
       exit(0);
-   }   
+   }
+
+   /*
+    * Initialize the crypto subsystem (mbedTLS 4.x / PSA)
+    */
+   rc = psa_crypto_init();
+   if (rc != PSA_SUCCESS)
+   {
+      printf("Error, could not initialize the crypto subsystem.\n");
+      GOTO_END(-2);
+   }
 
    /*
     * Start the TNP protocol
     */
    rc = tnp_Start();
    if (rc != 0) GOTO_END(rc);
-   
+
    /*
     * Check for discover command only
     */
@@ -512,30 +549,30 @@ int main (int argc, char **argv)
    {
       Discover();
       GOTO_END(0);
-   }    
-   
+   }
+
    /********************************************/
    /*  At this point all parameter was parsed  */
    /********************************************/
-   
-   /* 
+
+   /*
     * Retrieve infos like user, computer name and home path
-    */    
+    */
    rc = GetEnvironemnt();
    if (rc != 0)
    {
       printf("Error, could not retrieve environment variables.\n");
       GOTO_END(-3);
    }
-   
-   /* 
-    * Check if a server should be selected automatically 
-    */ 
+
+   /*
+    * Check if a server should be selected automatically
+    */
    if (0 == CmdIP)
    {
-      /* Search server */ 
-      printf("Searching Embedded Secure Signing Server...\n\n"); 
-      rc = tnp_ES3Search(); 
+      /* Search server */
+      printf("Searching Embedded Secure Signing Server...\n\n");
+      rc = tnp_ES3Search();
       if (rc != 0)
       {
          printf("No server found.\n");
@@ -545,52 +582,55 @@ int main (int argc, char **argv)
    else
    {
       /* Use the given IP-Address */
-      dAddress = inet_addr(IPName);
-      if (INADDR_NONE == dAddress)
+      dAddress = (uint32_t)inet_addr(IPName);
+      if ((uint32_t)INADDR_NONE == dAddress)
       {
          printf("Error, IP-Address invalid: %s\n", IPName);
          GOTO_END(-5);
       }
-   }      
+   }
 
    printf("SlotList parameters\n");
    printf("====================\n");
-    
+
    if (1 == CmdIP)
-   { 
+   {
       /* Use the given IP-Address */
       iaAddr.s_addr = dAddress;
-      printf("Server: %s\n", inet_ntoa(iaAddr));
+      inet_ntop(AF_INET, &iaAddr, String, sizeof(String));
+      printf("Server: %s\n", String);
    }
    else
    {
       /* Use the first server which was found in the network */
       rc = tnp_ES3GetServer(0, &Server);
       if (0 != rc) GOTO_END(-6);
-      
+
       dAddress = Server.dAddress;
       iaAddr.s_addr = dAddress;
-      printf("Server: %s  ", inet_ntoa(iaAddr));
+      inet_ntop(AF_INET, &iaAddr, String, sizeof(String));
+      printf("Server: %s  ", String);
 
       /* Output additional server informations */
-      _snprintf(String, sizeof(String), "%02X:%02X:%02X:%02X:%02X:%02X",
+      snprintf(String, sizeof(String), "%02X:%02X:%02X:%02X:%02X:%02X",
          Server.bMACAddress[0], Server.bMACAddress[1], Server.bMACAddress[2],
          Server.bMACAddress[3], Server.bMACAddress[4], Server.bMACAddress[5]);
       printf("%s  ", String);
-      
-      _snprintf(String, sizeof(String), "%s - v%d.%02d", Server.Name, Server.dFWVersion/100, Server.dFWVersion%100);
+
+      snprintf(String, sizeof(String), "%s - v%d.%02d",
+         Server.Name, (int)(Server.dFWVersion/100), (int)(Server.dFWVersion%100));
       printf("%s  %s\r\n", String, Server.Location);
-   }   
+   }
 
    /************************************************/
    /*  At this point all parameters are available  */
    /************************************************/
-   
+
    rc = SlotList(dAddress);
 
 end:
-   
-   tnp_Stop();   
+
+   tnp_Stop();
 
    return(rc);
 } /* main */

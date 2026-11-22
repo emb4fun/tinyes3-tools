@@ -1,5 +1,5 @@
 /**************************************************************************
-*  Copyright (c) 2021-2024 by Michael Fischer (www.emb4fun.de).
+*  Copyright (c) 2021-2026 by Michael Fischer (www.emb4fun.de).
 *  All rights reserved.
 *
 *  Redistribution and use in source and binary forms, with or without 
@@ -35,48 +35,46 @@
 *
 *  17.04.2021  mifi  First Version, release version v1.00.
 *  08.05.2021  mifi  Reduce ES3_SIGN_HEAD size.
+*  21.11.2026  mifi  Ported to MSYS2-UCRT64/Linux and mbedTLS 4.1.2.
 **************************************************************************/
 #define __MAIN_C__
 
 /*=======================================================================*/
 /*  Includes                                                             */
 /*=======================================================================*/
-#include <winsock2.h>
-#include <WS2tcpip.h>
-#include <windows.h>
 #include <stdio.h>
-#include "stdint.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+
 #include "adler32.h"
 #include "es3_sign.h"
 
-#include "mbedtls/platform.h"
+#include "psa/crypto.h"
 #include "mbedtls/pk.h"
-#include "mbedtls/sha256.h"
 
 /*=======================================================================*/
 /*  All Structures and Common Constants                                  */
 /*=======================================================================*/
 
-#define VERSION         "1.20"
+#define VERSION         "2.00"
 
 #define GOTO_END(_a)    { rc = _a; goto end; }
 
 #define MAX_IMAGE_SIZE  (4*1024*1024)
 
-#define FILE_NAME_SIZE  (_MAX_PATH-1)
+#define ES3_PATH_MAX    1024
+
+#define FILE_NAME_SIZE  (ES3_PATH_MAX-1)
 
 /*=======================================================================*/
 /*  Definition of all local Data                                         */
 /*=======================================================================*/
 
-static char KeyName[FILE_NAME_SIZE+1];
-static char FileName[FILE_NAME_SIZE+1];
+static char    KeyName[FILE_NAME_SIZE+1];
+static char    FileName[FILE_NAME_SIZE+1];
 
-static BYTE InImage[MAX_IMAGE_SIZE];
-
-/*=======================================================================*/
-/*  Definition of prototypes                                             */
-/*=======================================================================*/
+static uint8_t InImage[MAX_IMAGE_SIZE];
 
 /*=======================================================================*/
 /*  Definition of all local Procedures                                   */
@@ -93,11 +91,11 @@ static BYTE InImage[MAX_IMAGE_SIZE];
 /*************************************************************************/
 static void OutputStartMessage (void)
 {
-   printf("\n");   
-   printf("es3verify v%s compiled "__DATE__" "__TIME__"\n", VERSION);
-   printf("(c) 2021 by Michael Fischer (www.emb4fun.de)\n");
    printf("\n");
-   
+   printf("es3verify v%s compiled "__DATE__" "__TIME__"\n", VERSION);
+   printf("(c) 2021-2026 by Michael Fischer (www.emb4fun.de)\n");
+   printf("\n");
+
 } /* OutputStartMessage */
 
 /*************************************************************************/
@@ -115,7 +113,7 @@ static void OutputUsage (void)
   printf("\n");
   printf("  -k   Public key used to verify e.g. -k firefly.pub\n");
   printf("  -f   File to verify, e.g. -f firefly.es3\n");
-  
+
 } /* OutputUsage */
 
 /*************************************************************************/
@@ -127,31 +125,33 @@ static void OutputUsage (void)
 /*************************************************************************/
 static int VerifySignature (void)
 {
-   int                  rc;
-   FILE               *hInFile;
-   DWORD               dInFileSize;
-   mbedtls_pk_context   pk;
-   ES3_SIGN_HEAD      *pHeader;
-   uint8_t            *pData;
-   uint8_t              Hash[32];
-   
+   int                rc;
+   size_t             hash_len = 0;
+   FILE              *hInFile;
+   long               lFileSize;
+   uint32_t           dInFileSize;
+   mbedtls_pk_context pk;
+   ES3_SIGN_HEAD     *pHeader;
+   uint8_t           *pData;
+   uint8_t            Hash[32];
+
    /*
-    * Prepare key generation
+    * Prepare key verification
     */
    mbedtls_pk_init(&pk);
 
-   /* Read public key */   
+   /* Read public key */
    rc = mbedtls_pk_parse_public_keyfile(&pk, KeyName);
-   if (rc != 0) 
+   if (rc != 0)
    {
       printf("Error, \"%s\" is not a valid public key file.\n", KeyName);
       GOTO_END(-1);
    }
-   
+
    /*
     * Check input file
-    */   
-   
+    */
+
    /* Check if input file is available */
    hInFile = fopen(FileName, "rb");
    if (NULL == hInFile)
@@ -162,22 +162,28 @@ static int VerifySignature (void)
 
    /* Get size of input file */
    fseek(hInFile, 0, SEEK_END);
-   dInFileSize = ftell(hInFile);
+   lFileSize = ftell(hInFile);
    fseek(hInFile, 0, SEEK_SET);
-   
+
    /* Read input file data */
-   if (dInFileSize > MAX_IMAGE_SIZE)
+   if (lFileSize > MAX_IMAGE_SIZE)
    {
       printf("Error, input file size > %d\n", MAX_IMAGE_SIZE);
       fclose(hInFile);
       GOTO_END(-3);
    }
+   dInFileSize = (uint32_t)lFileSize;
 
    /* "Clear" InImage, read and close the file */
    memset(InImage, 0x00, sizeof(InImage));
-   fread(InImage, 1, dInFileSize, hInFile); 
+   if (fread(InImage, 1, dInFileSize, hInFile) != dInFileSize)
+   {
+      printf("Error, could not read input file \"%s\"\n", FileName);
+      fclose(hInFile);
+      GOTO_END(-3);
+   }
    fclose(hInFile);
-   
+
    /*
     * Check whether this is a file which has an ES3 signature
     */
@@ -187,14 +193,18 @@ static int VerifySignature (void)
        (ES3_HEAD_SIZEVER == pHeader->dSizeVersion) )
    {
       /* Check CRC */
-      if (pHeader->dCRC32 == adler32(ADLER_START_VALUE, (uint8_t*)pHeader, sizeof(ES3_SIGN_HEAD) - sizeof(pHeader->dCRC32)))
+      if (pHeader->dCRC32 == adler32(ADLER_START_VALUE, (uint8_t*)pHeader,
+                                     (uint32_t)(sizeof(ES3_SIGN_HEAD) - sizeof(pHeader->dCRC32))))
       {
          /* Create hash */
          pData = &InImage[sizeof(ES3_SIGN_HEAD)];
-         mbedtls_sha256_ret(pData, pHeader->dDataSize, Hash, 0);
-         
+         rc = psa_hash_compute(PSA_ALG_SHA_256, pData, pHeader->dDataSize,
+                               Hash, sizeof(Hash), &hash_len);
+         if (rc != PSA_SUCCESS) GOTO_END(-4);
+
          /* Check signature */
-         rc = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, Hash, 0, pHeader->Signature, pHeader->bSigLen);
+         rc = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, Hash, sizeof(Hash),
+                                 pHeader->Signature, pHeader->bSigLen);
          if (0 == rc)
          {
             printf("The signature of the input file is valid.\n");
@@ -202,28 +212,27 @@ static int VerifySignature (void)
          else
          {
             printf("Error, the signature of the input file is invalid.\n");
-            rc = -4;
+            rc = -5;
          }
       }
       else
       {
          printf("Error, input file \"%s\" has a defect CRC.\n", FileName);
-         rc = -5;
+         rc = -6;
       }
    }
    else
    {
       printf("Error, input file \"%s\" has not an ES3 signature.\n", FileName);
-      rc = -6;
-   }       
-   
+      rc = -7;
+   }
+
 end:
 
    mbedtls_pk_free(&pk);
 
    return(rc);
 } /* VerifySignature */
-
 
 /*=======================================================================*/
 /*  All code exported                                                    */
@@ -244,44 +253,43 @@ int main (int argc, char **argv)
    int    CmdVersion  = 0;
    int    CmdKey      = 0;
    int    CmdFile     = 0;
-   FILE *hFile;
-   
-   
+   FILE  *hFile;
+
    /*
     * Output start message
     */
    OutputStartMessage();
-   
-   /* Clear data first */   
+
+   /* Clear data first */
    memset(KeyName, 0x00, sizeof(KeyName));
    memset(FileName, 0x00, sizeof(FileName));
-   
-   /* 
+
+   /*
     * Check arguments if available
     */
    if (argc > 1)
    {
       for (Index = 1; Index < argc; Index++)
       {
-         /* Check slot name */
+         /* Check public key name */
          if      (0 == strcmp(argv[Index], "-k"))
          {
             if ((Index + 1) < argc)
             {
-               CmdKey = 1;   
+               CmdKey = 1;
                Index++;
-               _snprintf(KeyName, FILE_NAME_SIZE, "%s", argv[Index]);
-            }               
+               snprintf(KeyName, FILE_NAME_SIZE, "%s", argv[Index]);
+            }
          }
          /* Check file name */
          else if (0 == strcmp(argv[Index], "-f"))
          {
             if ((Index + 1) < argc)
             {
-               CmdFile = 1;   
+               CmdFile = 1;
                Index++;
-               _snprintf(FileName, FILE_NAME_SIZE, "%s", argv[Index]);
-            }               
+               snprintf(FileName, FILE_NAME_SIZE, "%s", argv[Index]);
+            }
          }
          /* Check version information only */
          else if (0 == strcmp(argv[Index], "-v"))
@@ -298,7 +306,7 @@ int main (int argc, char **argv)
    else
    {
       /* Error, no argument */
-      CmdUnknown = 1;   
+      CmdUnknown = 1;
    }
 
    /* Ups, found an unknown command */
@@ -307,15 +315,15 @@ int main (int argc, char **argv)
       OutputUsage();
       exit(0);
    }
-   
+
    /* Version information requested */
    if (1 == CmdVersion)
    {
       /* Only OutputStartMessage was needed */
       exit(0);
-   }   
+   }
 
-   /* Check if slot and file was used */
+   /* Check if key and file was used */
    if ((0 == CmdKey) || (0 == CmdFile))
    {
       /* Error */
@@ -331,7 +339,7 @@ int main (int argc, char **argv)
       GOTO_END(-2);
    }
    fclose(hFile);
-   
+
    /* Check if input file is available */
    hFile = fopen(FileName, "rb");
    if (NULL == hFile)
@@ -340,19 +348,29 @@ int main (int argc, char **argv)
       GOTO_END(-3);
    }
    fclose(hFile);
-      
+
    /********************************************/
    /*  At this point all parameter was parsed  */
    /********************************************/
-   
+
+   /*
+    * Initialize the crypto subsystem (mbedTLS 4.x / PSA)
+    */
+   rc = psa_crypto_init();
+   if (rc != PSA_SUCCESS)
+   {
+      printf("Error, could not initialize the crypto subsystem.\n");
+      GOTO_END(-4);
+   }
+
    printf("Public key: %s\n", KeyName);
    printf("Input file: %s\n", FileName);
    printf("\n");
-   
+
    rc = VerifySignature();
 
 end:
-   
+
    return(rc);
 } /* main */
 

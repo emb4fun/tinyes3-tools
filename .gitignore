@@ -1,2 +1,6 @@
-#
-**/*.bak
+# CMake build directories
+build/
+
+# Collected executables (see CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+bin-release/
+bin-debug/
